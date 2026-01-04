@@ -1,6 +1,7 @@
 use std::{ffi::CString, sync::Arc};
 
 use anyhow::Context;
+use vk_mem::AllocatorCreateInfo;
 use winit::{
     raw_window_handle::{HasDisplayHandle, HasWindowHandle},
     window::Window,
@@ -8,19 +9,14 @@ use winit::{
 
 use ash::{ext::debug_utils, vk};
 
-use crate::vulkan::{
-    physical,
-    swapchain::{SwapchainProperties, create_swapchain},
-};
-
 use super::{
+    debug::{
+        ENABLE_VALIDATION_LAYERS, check_validation_layer_support, create_debug_create_info,
+        get_layer_names_and_pointers, setup_debug_messenger,
+    },
     device::create_logical_device,
     physical::{QueueFamiliesIndices, pick_physical_device},
-};
-
-use super::debug::{
-    ENABLE_VALIDATION_LAYERS, check_validation_layer_support, create_debug_create_info,
-    get_layer_names_and_pointers, setup_debug_messenger,
+    swapchain::{SwapchainProperties, create_swapchain},
 };
 
 pub struct VulkanContext {
@@ -43,6 +39,8 @@ pub struct VulkanContext {
     properties: SwapchainProperties,
     images: Vec<vk::Image>,
     semaphores: Vec<vk::Semaphore>,
+
+    allocator: vk_mem::Allocator,
 }
 
 impl VulkanContext {
@@ -68,6 +66,11 @@ impl VulkanContext {
         )
         .context("failed initialzing swapchain")?;
 
+        let aci = AllocatorCreateInfo::new(&instance, &device, physical_device);
+
+        let allocator =
+            unsafe { vk_mem::Allocator::new(aci).context("failed to create allocator")? };
+
         Ok(Self {
             surface_instance,
             surface_khr,
@@ -83,6 +86,7 @@ impl VulkanContext {
             properties,
             images,
             semaphores,
+            allocator,
         })
     }
 
