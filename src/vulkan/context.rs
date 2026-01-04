@@ -8,7 +8,15 @@ use winit::{
 
 use ash::{ext::debug_utils, vk};
 
-use crate::device::Device;
+use crate::vulkan::{
+    physical,
+    swapchain::{SwapchainProperties, create_swapchain},
+};
+
+use super::{
+    device::create_logical_device,
+    physical::{QueueFamiliesIndices, pick_physical_device},
+};
 
 use super::debug::{
     ENABLE_VALIDATION_LAYERS, check_validation_layer_support, create_debug_create_info,
@@ -16,12 +24,25 @@ use super::debug::{
 };
 
 pub struct VulkanContext {
-    device: Arc<Device>,
-
+    // Instance
     surface_instance: ash::khr::surface::Instance,
-    surface_khr: Option<vk::SurfaceKHR>,
+    surface_khr: vk::SurfaceKHR,
     debug_report_callback: Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
     instance: ash::Instance,
+
+    // Device
+    physical_device: Option<vk::PhysicalDevice>,
+    queue_families_indices: QueueFamiliesIndices,
+    graphics_queue: ash::vk::Queue,
+    present_queue: ash::vk::Queue,
+    device: Arc<ash::Device>,
+
+    // Swapchain
+    swapchain_device: ash::khr::swapchain::Device,
+    swapchain: vk::SwapchainKHR,
+    properties: SwapchainProperties,
+    images: Vec<vk::Image>,
+    semaphores: Vec<vk::Semaphore>,
 }
 
 impl VulkanContext {
@@ -29,12 +50,39 @@ impl VulkanContext {
         let (surface_instance, surface_khr, debug_report_callback, instance) =
             create_instance(_window).context("failed to create instance")?;
 
+        let (physical_device, queue_families_indices) =
+            pick_physical_device(&instance, &surface_instance, surface_khr)
+                .context("failed to select a physical device")?;
+
+        let (device, graphics_queue, present_queue) =
+            create_logical_device(&instance, physical_device, queue_families_indices)
+                .context("failed to create a logical device and/or queues")?;
+
+        let (swapchain_device, swapchain, properties, images, semaphores) = create_swapchain(
+            physical_device,
+            &surface_instance,
+            surface_khr,
+            queue_families_indices,
+            &instance,
+            &device,
+        )
+        .context("failed initialzing swapchain")?;
+
         Ok(Self {
-            device: Arc::new(Device::new(1)),
             surface_instance,
             surface_khr,
             debug_report_callback,
             instance,
+            physical_device: Some(physical_device),
+            queue_families_indices,
+            graphics_queue,
+            present_queue,
+            device,
+            swapchain_device,
+            swapchain,
+            properties,
+            images,
+            semaphores,
         })
     }
 
@@ -48,18 +96,42 @@ impl VulkanContext {
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         log::trace!("Destroying Vulkan Context");
+
+        self.images.clear();
+
+        for s in self.semaphores.drain(..) {
+            unsafe {
+                self.device.destroy_semaphore(s, None);
+            }
+        }
+
+        log::trace!("  Destroying Swapchain");
+        unsafe {
+            self.swapchain_device
+                .destroy_swapchain(self.swapchain, None);
+        }
+
+        log::trace!("  Destroying Surface");
+        unsafe {
+            self.surface_instance
+                .destroy_surface(self.surface_khr, None);
+        }
+
+        log::trace!("  Destroying Device");
+        unsafe {
+            self.device
+                .device_wait_idle()
+                .expect("wait_idle failed during VulkanContext Drop");
+            self.device.destroy_device(None);
+        }
+
         if let Some((debug_utils, messenger)) = &self.debug_report_callback {
             log::trace!("  Destroying debug messenger");
             unsafe {
                 debug_utils.destroy_debug_utils_messenger(*messenger, None);
             }
         }
-        if let Some(surface_khr) = self.surface_khr {
-            log::trace!("  Destroying Surface");
-            unsafe {
-                self.surface_instance.destroy_surface(surface_khr, None);
-            }
-        }
+
         log::trace!("  Destroying Instance");
         unsafe {
             self.instance.destroy_instance(None);
@@ -72,7 +144,7 @@ fn create_instance(
     window: &Window,
 ) -> anyhow::Result<(
     ash::khr::surface::Instance,
-    Option<vk::SurfaceKHR>,
+    vk::SurfaceKHR,
     Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
     ash::Instance,
 )> {
@@ -131,8 +203,7 @@ fn create_instance(
     };
 
     let surface_instance = ash::khr::surface::Instance::new(&entry, &instance);
-    let mut surface_khr: Option<ash::vk::SurfaceKHR> = None;
-    let s = unsafe {
+    let surface_khr = unsafe {
         ash_window::create_surface(
             &entry,
             &instance,
@@ -140,17 +211,13 @@ fn create_instance(
             window_handle.as_raw(),
             None,
         )
-        .context("failed to create surface")?
-    };
-    assert!(
-        surface_khr.replace(s).is_none(),
-        "Surface must only be created once"
-    );
+    }
+    .context("failed to create surface")?;
 
     let debug_messenger = setup_debug_messenger(&entry, &instance);
     Ok((surface_instance, surface_khr, debug_messenger, instance))
 }
 
 pub struct DeviceCaps {
-    pub device: Arc<Device>,
+    pub device: Arc<ash::Device>,
 }

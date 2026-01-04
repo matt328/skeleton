@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub fn render_thread(
-    caps: RenderCaps,
+    _caps: RenderCaps,
     render_rx: Receiver<RenderRequest>,
     control: Arc<EngineControl>,
 ) -> anyhow::Result<()> {
@@ -17,7 +17,7 @@ pub fn render_thread(
     while control.phase() != ShutdownPhase::StopRender || in_flight > 0 {
         if let Ok(req) = render_rx.try_recv() {
             log::debug!("Render thread: rendering {}", req.asset_id);
-            caps.device.submit("render");
+
             in_flight += 1;
         }
 

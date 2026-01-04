@@ -6,7 +6,6 @@ use crate::app::{App, AppState};
 
 mod app;
 mod caps;
-mod device;
 mod engine;
 mod gameplay;
 mod messages;
