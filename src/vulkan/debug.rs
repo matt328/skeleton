@@ -96,8 +96,7 @@ pub fn create_debug_create_info() -> vk::DebugUtilsMessengerCreateInfoEXT<'stati
         .flags(vk::DebugUtilsMessengerCreateFlagsEXT::empty())
         .message_severity(
             vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
         )
         .message_type(
             vk::DebugUtilsMessageTypeFlagsEXT::GENERAL

@@ -39,8 +39,9 @@ pub fn create_logical_device(
         .collect::<Vec<_>>();
 
     let device_features = vk::PhysicalDeviceFeatures::default().sampler_anisotropy(true);
-
-    let mut features13 = vk::PhysicalDeviceVulkan13Features::default().synchronization2(true);
+    let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
+        .synchronization2(true)
+        .dynamic_rendering(true);
 
     let device_create_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queue_create_infos)

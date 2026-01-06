@@ -10,33 +10,35 @@ use super::{
     device::create_logical_device,
     instance::create_instance,
     physical::{QueueFamiliesIndices, pick_physical_device},
-    swapchain::{SwapchainProperties, create_swapchain},
 };
 
 pub struct DeviceCaps {
     pub device: Arc<ash::Device>,
+    pub queue: vk::Queue,
+}
+
+pub struct SwapchainCreateCaps {
+    pub instance: Arc<ash::Instance>,
+    pub device: Arc<ash::Device>,
+    pub surface_instance: Arc<ash::khr::surface::Instance>,
+    pub physical_device: vk::PhysicalDevice,
+    pub surface: vk::SurfaceKHR,
+    pub queue_families: QueueFamiliesIndices,
 }
 
 pub struct VulkanContext {
     // Instance
-    surface_instance: ash::khr::surface::Instance,
+    surface_instance: Arc<ash::khr::surface::Instance>,
     surface_khr: vk::SurfaceKHR,
     debug_report_callback: Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
-    instance: ash::Instance,
+    instance: Arc<ash::Instance>,
 
     // Device
-    physical_device: Option<vk::PhysicalDevice>,
+    physical_device: vk::PhysicalDevice,
     queue_families_indices: QueueFamiliesIndices,
     graphics_queue: ash::vk::Queue,
     present_queue: ash::vk::Queue,
     device: Arc<ash::Device>,
-
-    // Swapchain
-    swapchain_device: ash::khr::swapchain::Device,
-    swapchain: vk::SwapchainKHR,
-    properties: SwapchainProperties,
-    images: Vec<vk::Image>,
-    semaphores: Vec<vk::Semaphore>,
 
     allocator: vk_mem::Allocator,
 }
@@ -54,36 +56,21 @@ impl VulkanContext {
             create_logical_device(&instance, physical_device, queue_families_indices)
                 .context("failed to create a logical device and/or queues")?;
 
-        let (swapchain_device, swapchain, properties, images, semaphores) = create_swapchain(
-            physical_device,
-            &surface_instance,
-            surface_khr,
-            queue_families_indices,
-            &instance,
-            &device,
-        )
-        .context("failed initialzing swapchain")?;
-
         let aci = AllocatorCreateInfo::new(&instance, &device, physical_device);
 
         let allocator =
             unsafe { vk_mem::Allocator::new(aci).context("failed to create allocator")? };
 
         Ok(Self {
-            surface_instance,
+            surface_instance: Arc::new(surface_instance),
             surface_khr,
             debug_report_callback,
-            instance,
-            physical_device: Some(physical_device),
+            instance: Arc::new(instance),
+            physical_device,
             queue_families_indices,
             graphics_queue,
             present_queue,
             device,
-            swapchain_device,
-            swapchain,
-            properties,
-            images,
-            semaphores,
             allocator,
         })
     }
@@ -91,6 +78,18 @@ impl VulkanContext {
     pub fn device_caps(&self) -> DeviceCaps {
         DeviceCaps {
             device: self.device.clone(),
+            queue: self.graphics_queue,
+        }
+    }
+
+    pub fn swapchain_caps(&self) -> SwapchainCreateCaps {
+        SwapchainCreateCaps {
+            instance: self.instance.clone(),
+            device: self.device.clone(),
+            surface_instance: self.surface_instance.clone(),
+            physical_device: self.physical_device,
+            surface: self.surface_khr,
+            queue_families: self.queue_families_indices,
         }
     }
 }
@@ -98,20 +97,6 @@ impl VulkanContext {
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         log::trace!("Destroying Vulkan Context");
-
-        self.images.clear();
-
-        for s in self.semaphores.drain(..) {
-            unsafe {
-                self.device.destroy_semaphore(s, None);
-            }
-        }
-
-        log::trace!("  Destroying Swapchain");
-        unsafe {
-            self.swapchain_device
-                .destroy_swapchain(self.swapchain, None);
-        }
 
         log::trace!("  Destroying Surface");
         unsafe {

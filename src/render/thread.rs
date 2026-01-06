@@ -1,31 +1,41 @@
 use std::sync::Arc;
 
-use crossbeam_channel::Receiver;
+use anyhow::Context;
 
 use crate::{
     caps::RenderCaps,
-    messages::{EngineControl, RenderRequest, ShutdownPhase},
+    messages::{EngineControl, ShutdownPhase},
+    render::context::RenderContext,
+    vulkan::SwapchainCreateCaps,
 };
 
+use super::render_packet::RenderData;
+
 pub fn render_thread(
-    _caps: RenderCaps,
-    render_rx: Receiver<RenderRequest>,
+    caps: &RenderCaps,
     control: Arc<EngineControl>,
+    swapchain_create_caps: SwapchainCreateCaps,
 ) -> anyhow::Result<()> {
-    let mut in_flight = 0usize;
+    let mut render_ctx = RenderContext::new(caps, swapchain_create_caps)
+        .context("failed to create render context")?;
 
-    while control.phase() != ShutdownPhase::StopRender || in_flight > 0 {
-        if let Ok(req) = render_rx.try_recv() {
-            log::debug!("Render thread: rendering {}", req.asset_id);
+    while control.phase() != ShutdownPhase::StopRender {
+        render_ctx
+            .render_frame(caps)
+            .context("failed to render frame")?;
+    }
 
-            in_flight += 1;
-        }
-
-        in_flight = in_flight.saturating_sub(1);
-
-        std::thread::sleep(std::time::Duration::from_millis(10));
+    unsafe {
+        caps.device
+            .device_wait_idle()
+            .context("render: failed waiting idle")?;
     }
 
     log::debug!("Render thread shutting down");
+
     Ok(())
+}
+
+fn gather_mock_render_data() -> RenderData {
+    RenderData { id: 5 }
 }

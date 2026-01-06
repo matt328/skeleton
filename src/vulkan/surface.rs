@@ -1,8 +1,6 @@
 use anyhow::Context;
 use ash::vk;
 
-use crate::vulkan::physical::QueueFamiliesIndices;
-
 #[derive(Clone, Copy, Debug)]
 pub struct SwapchainProperties {
     pub format: vk::SurfaceFormatKHR,
@@ -110,106 +108,4 @@ impl SurfaceSupportDetails {
         let height = preferred_dimensions[1].min(max.height).max(min.height);
         vk::Extent2D { width, height }
     }
-}
-
-type SwapchainComponents = (
-    ash::khr::swapchain::Device,
-    vk::SwapchainKHR,
-    SwapchainProperties,
-    Vec<vk::Image>,
-    Vec<vk::Semaphore>,
-);
-
-pub fn create_swapchain(
-    physical_device: vk::PhysicalDevice,
-    surface_instance: &ash::khr::surface::Instance,
-    surface_khr: vk::SurfaceKHR,
-    queue_families_indices: QueueFamiliesIndices,
-    instance: &ash::Instance,
-    device: &ash::Device,
-) -> anyhow::Result<SwapchainComponents> {
-    let details = SurfaceSupportDetails::new(physical_device, surface_instance, surface_khr)
-        .context("failed to create swapchain support details")?;
-    let properties = details.get_ideal_swapchain_properties([800, 600]);
-
-    let format = properties.format;
-    let present_mode = properties.present_mode;
-    let extent = properties.extent;
-    let image_count = {
-        let max = details.capabilities.max_image_count;
-        let mut preferred = details.capabilities.min_image_count + 1;
-        if max > 0 && preferred > max {
-            preferred = max;
-        }
-        preferred
-    };
-
-    log::debug!(
-        "Creating swapchain.\n\tFormat: {:?}\n\tColorSpace: {:?}\n\tPresentMode: {:?}\n\tExtent: {:?}\n\tImageCount: {:?}",
-        format.format,
-        format.color_space,
-        present_mode,
-        extent,
-        image_count,
-    );
-
-    let graphics = queue_families_indices.graphics_index;
-    let present = queue_families_indices.present_index;
-    let families_indices = [graphics, present];
-
-    let create_info = {
-        let mut builder = vk::SwapchainCreateInfoKHR::default()
-            .surface(surface_khr)
-            .min_image_count(image_count)
-            .image_format(format.format)
-            .image_color_space(format.color_space)
-            .image_extent(extent)
-            .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
-
-        builder = if graphics != present {
-            builder
-                .image_sharing_mode(vk::SharingMode::CONCURRENT)
-                .queue_family_indices(&families_indices)
-        } else {
-            builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-        };
-
-        builder
-            .pre_transform(details.capabilities.current_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(present_mode)
-            .clipped(true)
-    };
-
-    let swapchain_device_fns = ash::khr::swapchain::Device::new(instance, device);
-    let swapchain = unsafe {
-        swapchain_device_fns
-            .create_swapchain(&create_info, None)
-            .context("failed to create swapchain")?
-    };
-    let images = unsafe {
-        swapchain_device_fns
-            .get_swapchain_images(swapchain)
-            .context("failed to get swapchain images")?
-    };
-
-    let maybe_semaphores: anyhow::Result<Vec<vk::Semaphore>> = images
-        .iter()
-        .map(|_| unsafe {
-            device
-                .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
-                .context("failed to create semaphore")
-        })
-        .collect();
-
-    let semaphores = maybe_semaphores?;
-
-    Ok((
-        swapchain_device_fns,
-        swapchain,
-        properties,
-        images,
-        semaphores,
-    ))
 }

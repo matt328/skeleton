@@ -3,6 +3,8 @@ use std::ffi::CStr;
 use anyhow::Context;
 use ash::{khr::surface, vk};
 
+use crate::vulkan::SurfaceSupportDetails;
+
 fn get_required_device_extensions() -> [&'static CStr; 1] {
     [ash::khr::swapchain::NAME]
 }
@@ -57,14 +59,13 @@ fn is_device_suitable(
 ) -> bool {
     let (graphics, present) = find_queue_families(instance, surface, surface_khr, device);
     let extention_support = check_device_extension_support(instance, device);
-    let is_swapchain_adequate =
-        match super::swapchain::SwapchainSupportDetails::new(device, surface, surface_khr) {
-            Ok(details) => !details.formats.is_empty() && !details.present_modes.is_empty(),
-            Err(_) => {
-                log::warn!("failed to query swapchain support details");
-                false
-            }
-        };
+    let is_swapchain_adequate = match SurfaceSupportDetails::new(device, surface, surface_khr) {
+        Ok(details) => !details.formats.is_empty() && !details.present_modes.is_empty(),
+        Err(_) => {
+            log::warn!("failed to query swapchain support details");
+            false
+        }
+    };
 
     let features = unsafe { instance.get_physical_device_features(device) };
     graphics.is_some()

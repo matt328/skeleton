@@ -27,7 +27,7 @@ impl Engine {
         let vk_context = VulkanContext::new(window).context("failed to create vulkan context")?;
 
         let (upload_tx, upload_rx) = unbounded();
-        let (render_tx, render_rx) = unbounded();
+        let (render_tx, _render_rx) = unbounded();
         let (complete_tx, complete_rx) = unbounded();
 
         let control = Arc::new(EngineControl::new());
@@ -35,19 +35,23 @@ impl Engine {
         let device_caps = vk_context.device_caps();
         let render_caps = RenderCaps {
             device: device_caps.device.clone(),
+            queue: device_caps.queue,
         };
+
+        let swapchain_create_caps = vk_context.swapchain_caps();
 
         let render = std::thread::Builder::new()
             .name("render".to_string())
             .spawn({
                 let control = control.clone();
-                move || render_thread(render_caps, render_rx, control)
+                move || render_thread(&render_caps, control, swapchain_create_caps)
             })
-            .context("failed ot start render thread")?;
+            .context("failed to start render thread")?;
 
         let upload_caps = UploadCaps {
             device: device_caps.device,
         };
+
         let upload = std::thread::Builder::new()
             .name("upload".to_string())
             .spawn({
