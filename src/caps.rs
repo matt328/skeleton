@@ -5,6 +5,7 @@ use ash::vk;
 pub struct RenderCaps {
     pub device: Arc<ash::Device>,
     pub queue: vk::Queue,
+    pub present_queue: vk::Queue,
 }
 
 pub struct UploadCaps {

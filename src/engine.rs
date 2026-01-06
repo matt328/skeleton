@@ -36,6 +36,7 @@ impl Engine {
         let render_caps = RenderCaps {
             device: device_caps.device.clone(),
             queue: device_caps.queue,
+            present_queue: device_caps.present_queue,
         };
 
         let swapchain_create_caps = vk_context.swapchain_caps();

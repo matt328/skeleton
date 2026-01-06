@@ -88,7 +88,7 @@ impl RenderContext {
         submit_frame(&caps.device, caps.queue, frame, &self.swapchain_context)
             .context("failed to submit frame")?;
 
-        present_frame(caps.queue, frame, &self.swapchain_context)
+        present_frame(caps.present_queue, frame, &self.swapchain_context)
             .context("failed to present frame")?;
         Ok(())
     }

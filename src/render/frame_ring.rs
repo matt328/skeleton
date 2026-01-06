@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use super::frame::Frame;
 
 pub struct FrameRing {
@@ -14,12 +16,12 @@ impl FrameRing {
     pub fn acquire(&mut self, device: &ash::Device) -> anyhow::Result<&mut Frame> {
         let len = self.frames.len();
         let frame = &mut self.frames[self.index];
-        frame.wait(device);
+        frame.wait(device).context("failed to wait for frame")?;
         self.index = (self.index + 1) % len;
         Ok(frame)
     }
 
-    pub fn len(&self) -> usize {
+    pub fn _len(&self) -> usize {
         self.frames.len()
     }
 

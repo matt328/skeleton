@@ -15,6 +15,7 @@ use super::{
 pub struct DeviceCaps {
     pub device: Arc<ash::Device>,
     pub queue: vk::Queue,
+    pub present_queue: vk::Queue,
 }
 
 pub struct SwapchainCreateCaps {
@@ -79,6 +80,7 @@ impl VulkanContext {
         DeviceCaps {
             device: self.device.clone(),
             queue: self.graphics_queue,
+            present_queue: self.present_queue,
         }
     }
 
