@@ -1,6 +1,7 @@
 mod context;
 mod frame;
 mod frame_ring;
+mod pipeline;
 mod present;
 mod render_packet;
 mod renderer;

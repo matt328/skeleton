@@ -11,7 +11,10 @@ pub struct SwapchainContext {
     pub swapchain: vk::SwapchainKHR,
     properties: SwapchainProperties,
     pub images: Vec<vk::Image>,
+    pub image_views: Vec<vk::ImageView>,
     pub image_semaphores: Vec<vk::Semaphore>,
+    pub swapchain_format: vk::Format,
+    pub swapchain_extent: vk::Extent2D,
 }
 
 impl SwapchainContext {
@@ -77,11 +80,36 @@ impl SwapchainContext {
                 .create_swapchain(&create_info, None)
                 .context("failed to create swapchain")?
         };
+
         let images = unsafe {
             swapchain_device
                 .get_swapchain_images(swapchain)
                 .context("failed to get swapchain images")?
         };
+
+        let image_views: anyhow::Result<Vec<vk::ImageView>> = images
+            .iter()
+            .map(|&image| {
+                let view_info = vk::ImageViewCreateInfo::default()
+                    .image(image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(properties.format.format)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    });
+
+                unsafe {
+                    caps.device
+                        .create_image_view(&view_info, None)
+                        .context("failed to create swapchain image view")
+                }
+            })
+            .collect();
+        let image_views = image_views.context("failed to create swapchain image views")?;
 
         let mut image_semaphores = Vec::new();
         for _ in 0..image_count {
@@ -100,7 +128,10 @@ impl SwapchainContext {
             swapchain,
             properties,
             images,
+            image_views,
             image_semaphores,
+            swapchain_format: format.format,
+            swapchain_extent: extent,
         })
     }
 
@@ -110,15 +141,20 @@ impl SwapchainContext {
             for &sem in &self.image_semaphores {
                 self.device.destroy_semaphore(sem, None);
             }
+            for &image_view in &self.image_views {
+                self.device.destroy_image_view(image_view, None);
+            }
             self.swapchain_device
                 .destroy_swapchain(self.swapchain, None);
         }
+
         self.image_semaphores.clear();
         self.images.clear();
         self.swapchain = vk::SwapchainKHR::null();
     }
 
     pub fn acquire_next_image(&mut self, semaphore: vk::Semaphore) -> anyhow::Result<(u32, bool)> {
+        let _frame_span = tracy_client::span!("acquire_next_image");
         unsafe {
             self.swapchain_device
                 .acquire_next_image(self.swapchain, u64::MAX, semaphore, vk::Fence::null())

@@ -1,4 +1,5 @@
 use anyhow::Context;
+use tracy_client::span;
 
 use super::frame::Frame;
 
@@ -14,6 +15,7 @@ impl FrameRing {
     }
 
     pub fn acquire(&mut self, device: &ash::Device) -> anyhow::Result<&mut Frame> {
+        let _frame_span = span!("acquire");
         let len = self.frames.len();
         let frame = &mut self.frames[self.index];
         frame.wait(device).context("failed to wait for frame")?;

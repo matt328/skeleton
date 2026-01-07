@@ -1,5 +1,8 @@
 {
     "conventionalCommits.scopes": [
         "engine"
+    ],
+    "rust-analyzer.cargo.features": [
+        "tracing"
     ]
 }

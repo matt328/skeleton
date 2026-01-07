@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use ash::vk::{self, CommandBufferBeginInfo, RenderingInfo};
+use ash::vk::{self};
+#[cfg(feature = "tracing")]
+use tracy_client::frame_mark;
+use tracy_client::span;
 
 use crate::{
     caps::RenderCaps,
     render::{
-        Frame, present::present_frame, render_packet::RenderData, submit::submit_frame,
+        Frame, pipeline::create_default_pipeline, present::present_frame,
+        render_packet::RenderData, renderer::record_commands, submit::submit_frame,
         swapchain::SwapchainContext,
     },
     vulkan::SwapchainCreateCaps,
@@ -19,6 +23,10 @@ pub struct RenderContext {
     graphics_queue: vk::Queue,
     swapchain_context: SwapchainContext,
     frame_ring: FrameRing,
+    pipeline_layout: vk::PipelineLayout,
+    pipeline: vk::Pipeline,
+    frag_module: vk::ShaderModule,
+    vert_module: vk::ShaderModule,
 }
 
 impl RenderContext {
@@ -34,16 +42,24 @@ impl RenderContext {
         frames.push(Frame::new(&caps.device, queue_index).context("failed to create frame")?);
         frames.push(Frame::new(&caps.device, queue_index).context("failed to create frame")?);
         let frame_ring = FrameRing::new(frames);
+
+        let (pipeline_layout, pipeline, frag_module, vert_module) =
+            create_default_pipeline(&caps.device, swapchain_context.swapchain_format)?;
+
         Ok(Self {
             device: caps.device.clone(),
             graphics_queue: caps.queue,
             swapchain_context,
             frame_ring,
+            pipeline_layout,
+            pipeline,
+            frag_module,
+            vert_module,
         })
     }
-    // The frames in flight here isn't quite right.
-    // look at the cpp code and do what it does
+
     pub fn render_frame(&mut self, caps: &RenderCaps) -> anyhow::Result<()> {
+        let _frame_span = span!("RenderFrame");
         /*
          - swapchain has array of image semaphores
          - frame has single in_flight_fence
@@ -83,6 +99,9 @@ impl RenderContext {
             frame,
             &render_data,
             self.swapchain_context.images[image_index as usize],
+            self.pipeline,
+            self.swapchain_context.swapchain_extent,
+            self.swapchain_context.image_views[image_index as usize],
         )?;
 
         submit_frame(&caps.device, caps.queue, frame, &self.swapchain_context)
@@ -90,6 +109,9 @@ impl RenderContext {
 
         present_frame(caps.present_queue, frame, &self.swapchain_context)
             .context("failed to present frame")?;
+
+        #[cfg(feature = "tracing")]
+        frame_mark();
         Ok(())
     }
 }
@@ -97,6 +119,13 @@ impl RenderContext {
 impl Drop for RenderContext {
     fn drop(&mut self) {
         log::trace!("Destroying RenderContext");
+        unsafe {
+            self.device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device.destroy_pipeline(self.pipeline, None);
+            self.device.destroy_shader_module(self.frag_module, None);
+            self.device.destroy_shader_module(self.vert_module, None);
+        }
         self.frame_ring.destroy(&self.device);
         self.swapchain_context.destroy();
     }
@@ -104,86 +133,4 @@ impl Drop for RenderContext {
 
 fn gather_mock_render_data() -> RenderData {
     RenderData { id: 32 }
-}
-
-fn record_commands(
-    device: &ash::Device,
-    frame: &Frame,
-    _render_data: &RenderData,
-    swapchain_image: vk::Image,
-) -> anyhow::Result<()> {
-    if let Some(&cmd) = frame.command_buffers.first() {
-        let _rendering_info = RenderingInfo::default();
-        let begin_info = CommandBufferBeginInfo::default();
-        unsafe {
-            device
-                .begin_command_buffer(cmd, &begin_info)
-                .context("failed to begin command buffer")?;
-            transition_image_to_render(device, cmd, swapchain_image);
-            transition_image_to_present(device, cmd, swapchain_image);
-            device
-                .end_command_buffer(cmd)
-                .context("failed to end command buffer")?;
-        }
-    }
-
-    Ok(())
-}
-
-fn transition_image_to_render(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
-    let barrier = vk::ImageMemoryBarrier::default()
-        .old_layout(vk::ImageLayout::UNDEFINED) // or PRESENT_SRC_KHR if previously presented
-        .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .image(image)
-        .subresource_range(
-            vk::ImageSubresourceRange::default()
-                .aspect_mask(vk::ImageAspectFlags::COLOR)
-                .base_mip_level(0)
-                .level_count(1)
-                .base_array_layer(0)
-                .layer_count(1),
-        )
-        .src_access_mask(vk::AccessFlags::empty())
-        .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
-
-    unsafe {
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
-            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            vk::DependencyFlags::empty(),
-            &[],
-            &[],
-            &[barrier],
-        );
-    }
-}
-
-fn transition_image_to_present(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
-    let barrier = vk::ImageMemoryBarrier::default()
-        .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-        .image(image)
-        .subresource_range(
-            vk::ImageSubresourceRange::default()
-                .aspect_mask(vk::ImageAspectFlags::COLOR)
-                .base_mip_level(0)
-                .level_count(1)
-                .base_array_layer(0)
-                .layer_count(1),
-        )
-        .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-        .dst_access_mask(vk::AccessFlags::empty());
-
-    unsafe {
-        device.cmd_pipeline_barrier(
-            cmd,
-            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            vk::DependencyFlags::empty(),
-            &[],
-            &[],
-            &[barrier],
-        );
-    }
 }

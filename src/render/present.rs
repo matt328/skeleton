@@ -8,6 +8,7 @@ pub fn present_frame(
     frame: &Frame,
     swapchain_context: &SwapchainContext,
 ) -> anyhow::Result<()> {
+    let _frame_span = tracy_client::span!("present_frame");
     let image_index = frame.swapchain_image_index;
     let wait_semaphores = &[swapchain_context.image_semaphores[image_index as usize]];
     let index = [image_index];

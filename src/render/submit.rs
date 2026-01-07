@@ -10,6 +10,7 @@ pub fn submit_frame(
     frame: &Frame,
     swapchain: &SwapchainContext,
 ) -> anyhow::Result<()> {
+    let _frame_span = tracy_client::span!("submit_frame");
     let signal = [swapchain.image_semaphores[frame.swapchain_image_index as usize]];
     let wait = [frame.image_available];
     let wait_stages = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
