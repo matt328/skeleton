@@ -10,6 +10,7 @@ mod app;
 mod caps;
 mod engine;
 mod gameplay;
+mod image;
 mod messages;
 mod render;
 mod upload;

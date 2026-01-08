@@ -9,7 +9,7 @@ use tracy_client::span;
 use crate::{
     caps::RenderCaps,
     render::{
-        Frame, pipeline::create_default_pipeline, present::present_frame,
+        Frame, framegraph::FrameGraph, pipeline::create_default_pipeline, present::present_frame,
         render_packet::RenderData, renderer::record_commands, submit::submit_frame,
         swapchain::SwapchainContext,
     },
@@ -23,6 +23,7 @@ pub struct RenderContext {
     graphics_queue: vk::Queue,
     swapchain_context: SwapchainContext,
     frame_ring: FrameRing,
+    framegraph: FrameGraph,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     frag_module: vk::ShaderModule,
@@ -46,11 +47,14 @@ impl RenderContext {
         let (pipeline_layout, pipeline, frag_module, vert_module) =
             create_default_pipeline(&caps.device, swapchain_context.swapchain_format)?;
 
+        let framegraph = FrameGraph::new().context("RenderContext failed to create framegraph")?;
+
         Ok(Self {
             device: caps.device.clone(),
             graphics_queue: caps.queue,
             swapchain_context,
             frame_ring,
+            framegraph,
             pipeline_layout,
             pipeline,
             frag_module,
