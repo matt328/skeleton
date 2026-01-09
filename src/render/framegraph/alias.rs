@@ -37,4 +37,6 @@ impl AliasRegistry {
             image_view_entries: HashMap::default(),
         })
     }
+
+    pub fn register(&mut self, alias: &String, image_spec: &ImageSpec) {}
 }

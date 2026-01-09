@@ -2,9 +2,16 @@ mod culling;
 mod forward;
 mod present;
 
-use crate::render::{Frame, framegraph::alias::AliasRegistry};
+use crate::render::{
+    Frame,
+    framegraph::{alias::AliasRegistry, image::ImageRequirement},
+};
 
-pub struct PassDescription {}
+pub struct PassDescription {
+    pub name: String,
+    pub image_requirements: Vec<ImageRequirement>,
+    pub depends_on: Vec<String>,
+}
 
 pub trait RenderPass {
     fn id(&self) -> u32;

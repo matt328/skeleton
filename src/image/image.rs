@@ -1,3 +1,5 @@
+use std::fmt;
+
 use anyhow::Context;
 use ash::vk;
 use slotmap::SecondaryMap;
@@ -12,6 +14,16 @@ new_key_type! {pub struct ImageKey; }
 pub enum ResizePolicy {
     Swapchain,
     Fixed,
+}
+
+impl fmt::Display for ResizePolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            ResizePolicy::Swapchain => "Swapchain",
+            ResizePolicy::Fixed => "Fixed",
+        };
+        f.write_str(s)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,10 +41,10 @@ pub struct ImageSpec {
     pub mips: u32,
     pub layers: u32,
     pub samples: vk::SampleCountFlags,
-    resize_policy: ResizePolicy,
+    pub resize_policy: ResizePolicy,
     pub lifetime: ImageLifetime,
     pub initial_layout: vk::ImageLayout,
-    debug_name: Option<String>,
+    pub debug_name: Option<String>,
 }
 
 impl Default for ImageSpec {
@@ -49,6 +61,30 @@ impl Default for ImageSpec {
             initial_layout: Default::default(),
             debug_name: Default::default(),
         }
+    }
+}
+
+impl fmt::Display for ImageSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ImageSpec(format={:?}, extent={}x{}x{}, usage={:?}, mips={}, layers={}, samples={:?}, resizePolicy={}, lifetime={:?}, initialLayout={:?}, debugName={})",
+            self.format,
+            self.extent.width,
+            self.extent.height,
+            self.extent.depth,
+            self.usage,
+            self.mips,
+            self.layers,
+            self.samples,
+            self.resize_policy,
+            self.lifetime,
+            self.initial_layout,
+            match &self.debug_name {
+                Some(name) => name.as_str(),
+                None => "<none>",
+            }
+        )
     }
 }
 
