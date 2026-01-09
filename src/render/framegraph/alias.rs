@@ -28,3 +28,13 @@ pub struct AliasRegistry {
 
     image_view_entries: HashMap<Alias, AliasImageViewEntry>,
 }
+
+impl AliasRegistry {
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            image_specs: HashMap::default(),
+            image_entries: HashMap::default(),
+            image_view_entries: HashMap::default(),
+        })
+    }
+}
