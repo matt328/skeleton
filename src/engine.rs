@@ -1,33 +1,31 @@
-use std::{sync::Arc, thread::JoinHandle};
+use std::sync::{Arc, mpsc};
+use std::thread;
 
 use anyhow::Context;
 use crossbeam_channel::unbounded;
 use winit::window::Window;
 
-use crate::{
-    caps::{RenderCaps, UploadCaps},
-    gameplay::gameplay_thread,
-    messages::{EngineControl, ShutdownPhase},
-    render::render_thread,
-    upload::upload_thread,
-    vulkan::VulkanContext,
-};
+use crate::caps::{RenderCaps, UploadCaps};
+use crate::gameplay::gameplay_thread;
+use crate::messages::{EngineControl, ShutdownPhase};
+use crate::render::render_thread;
+use crate::upload::upload_thread;
+use crate::vulkan::VulkanContext;
 
 pub struct Engine {
     _vk: VulkanContext,
     control: Arc<EngineControl>,
-
-    render: Option<JoinHandle<anyhow::Result<()>>>,
-    upload: Option<JoinHandle<anyhow::Result<()>>>,
-    gameplay: Option<JoinHandle<anyhow::Result<()>>>,
+    upload: Option<thread::JoinHandle<()>>,
+    render: Option<thread::JoinHandle<()>>,
+    gameplay: Option<thread::JoinHandle<()>>,
 }
 
 impl Engine {
     pub fn new(window: &Window) -> anyhow::Result<Self> {
-        let vk_context = VulkanContext::new(window).context("failed to create vulkan context")?;
+        let vk_context = VulkanContext::new(window).context("failed to create Vulkan context")?;
 
         let (upload_tx, upload_rx) = unbounded();
-        let (render_tx, _render_rx) = unbounded();
+        let (render_tx, render_rx) = unbounded();
         let (complete_tx, complete_rx) = unbounded();
 
         let control = Arc::new(EngineControl::new());
@@ -35,76 +33,91 @@ impl Engine {
         let device_caps = vk_context.device_caps();
         let render_caps = RenderCaps {
             device: device_caps.device.clone(),
+            instance: vk_context.swapchain_caps().instance,
+            physical_device: Arc::new(vk_context.swapchain_caps().physical_device),
             queue: device_caps.queue,
             present_queue: device_caps.present_queue,
         };
-
         let swapchain_create_caps = vk_context.swapchain_caps();
-
-        let render = std::thread::Builder::new()
-            .name("render".to_string())
-            .spawn({
-                let control = control.clone();
-                move || render_thread(&render_caps, control, swapchain_create_caps)
-            })
-            .context("failed to start render thread")?;
-
         let upload_caps = UploadCaps {
-            device: device_caps.device,
+            device: device_caps.device.clone(),
         };
 
-        let upload = std::thread::Builder::new()
-            .name("upload".to_string())
-            .spawn({
-                let control = control.clone();
-                move || upload_thread(upload_caps, upload_rx, render_tx, complete_tx, control)
-            })
-            .context("failed to start upload thread")?;
+        let (error_tx, error_rx) = mpsc::channel::<(String, anyhow::Error)>();
 
-        let gameplay = std::thread::Builder::new()
-            .name("gameplay".to_string())
-            .spawn({
-                let control = control.clone();
-                move || gameplay_thread(upload_tx, complete_rx, control)
-            })
-            .context("failed to start gameplay thread")?;
+        let render_handle = {
+            let control = control.clone();
+            let error_tx = error_tx.clone();
+            thread::Builder::new()
+                .name("render".to_string())
+                .spawn(move || {
+                    if let Err(e) = render_thread(render_caps, control, swapchain_create_caps) {
+                        let _ = error_tx.send(("render".to_string(), e));
+                    }
+                })?
+        };
+
+        let upload_handle = {
+            let control = control.clone();
+            let error_tx = error_tx.clone();
+            thread::Builder::new()
+                .name("upload".to_string())
+                .spawn(move || {
+                    if let Err(e) =
+                        upload_thread(upload_caps, upload_rx, render_tx, complete_tx, control)
+                    {
+                        let _ = error_tx.send(("upload".to_string(), e));
+                    }
+                })?
+        };
+
+        let gameplay_handle = {
+            let control = control.clone();
+            let error_tx = error_tx.clone();
+            thread::Builder::new()
+                .name("gameplay".to_string())
+                .spawn(move || {
+                    if let Err(e) = gameplay_thread(upload_tx, complete_rx, control) {
+                        let _ = error_tx.send(("gameplay".to_string(), e));
+                    }
+                })?
+        };
+
+        let _watchdog = {
+            thread::Builder::new()
+                .name("thread_watchdog".to_string())
+                .spawn(move || {
+                    for (name, e) in error_rx {
+                        log::error!("Thread {} failed: {:?}", name, e);
+                    }
+                })?
+        };
 
         Ok(Self {
             _vk: vk_context,
             control,
-            upload: Some(upload),
-            gameplay: Some(gameplay),
-            render: Some(render),
+            render: Some(render_handle),
+            upload: Some(upload_handle),
+            gameplay: Some(gameplay_handle),
         })
     }
 
     pub fn shutdown(&mut self) -> anyhow::Result<()> {
         self.control.set_phase(ShutdownPhase::StopGameplay);
         if let Some(handle) = self.gameplay.take() {
-            join_thread("gameplay", handle)?;
+            handle.join().ok();
         }
 
         self.control.set_phase(ShutdownPhase::StopUpload);
         if let Some(handle) = self.upload.take() {
-            join_thread("upload", handle)?;
+            handle.join().ok();
         }
 
         self.control.set_phase(ShutdownPhase::StopRender);
         if let Some(handle) = self.render.take() {
-            join_thread("render", handle)?;
+            handle.join().ok();
         }
 
         Ok(())
-    }
-}
-
-fn join_thread(
-    name: &'static str,
-    handle: std::thread::JoinHandle<anyhow::Result<()>>,
-) -> anyhow::Result<()> {
-    match handle.join() {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(e).context(format!("{name} thread failed")),
-        Err(panic) => Err(anyhow::anyhow!("{name} thread panicked: {:?}", panic)),
     }
 }

@@ -2,46 +2,34 @@ use std::fmt;
 
 use ash::vk;
 
-use crate::image::ImageSpec;
+use crate::render::framegraph::{alias::ImageDesc, graph::ImageAlias};
 
-#[derive(PartialEq, Eq)]
-pub struct ImageUseSpec {
-    pub access_flags: vk::AccessFlags2,
-    pub pipeline_stage_flags: vk::PipelineStageFlags2,
-    pub image_layout: vk::ImageLayout,
-    pub image_aspect_flags: vk::ImageAspectFlags,
+#[derive(Clone, Copy, PartialEq)]
+pub enum ImageCreation {
+    Declare(ImageDesc),
+    UseExisting,
 }
 
-impl fmt::Display for ImageUseSpec {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ImageUsage {
+    pub access: vk::AccessFlags2,
+    pub stages: vk::PipelineStageFlags2,
+    pub layout: vk::ImageLayout,
+    pub aspects: vk::ImageAspectFlags,
+}
+
+impl fmt::Display for ImageUsage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "ImageUseDescription(accessFlags={:?}, stageFlags={:?}, imageLayout={:?}, aspectFlags={:?})",
-            self.access_flags,
-            self.pipeline_stage_flags,
-            self.image_layout,
-            self.image_aspect_flags,
+            self.access, self.stages, self.layout, self.aspects,
         )
     }
 }
 
 pub struct ImageRequirement {
-    pub alias: String,
-    pub spec: Option<ImageSpec>,
-    pub use_spec: ImageUseSpec,
-}
-
-impl fmt::Display for ImageRequirement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ImageRequirement(alias=\"{}\", spec={}, useSpec={})",
-            self.alias,
-            match &self.spec {
-                Some(spec) => spec.to_string(),
-                None => "<none>".to_string(),
-            },
-            self.use_spec
-        )
-    }
+    pub alias: ImageAlias,
+    pub creation: ImageCreation,
+    pub usage: ImageUsage,
 }

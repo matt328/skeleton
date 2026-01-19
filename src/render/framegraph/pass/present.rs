@@ -1,4 +1,4 @@
-use crate::render::framegraph::{alias::AliasRegistry, pass::RenderPass};
+use crate::render::framegraph::pass::{RenderPass, RenderPassContext};
 
 pub struct PresentPass {}
 
@@ -7,15 +7,27 @@ impl RenderPass for PresentPass {
         todo!()
     }
 
-    fn register_aliases(&self, registry: &mut AliasRegistry) -> anyhow::Result<()> {
+    fn execute(&self, ctx: &RenderPassContext) -> anyhow::Result<()> {
         todo!()
     }
 
-    fn execute(
-        &self,
-        frame: &crate::render::Frame,
-        cmd: ash::vk::CommandBuffer,
-    ) -> anyhow::Result<()> {
+    fn image_precursors(&self) -> Vec<super::ImageBarrierPrecursor> {
+        todo!()
+    }
+
+    fn buffer_precursors(&self) -> Vec<super::BufferBarrierPrecursor> {
+        todo!()
+    }
+
+    fn pipeline_desc(&self) -> crate::render::pipeline::GraphicsPipelineDesc {
+        todo!()
+    }
+
+    fn image_requirements(&self) -> &[crate::render::framegraph::image::ImageRequirement] {
+        todo!()
+    }
+
+    fn rendering_info(&self) -> crate::render::framegraph::graph::RenderingInfo {
         todo!()
     }
 }

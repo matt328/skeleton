@@ -15,10 +15,12 @@ pub fn submit_frame(
     let wait = [frame.image_available];
     let wait_stages = &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 
+    let command_buffers = [frame.primary_cmd];
+
     let submit_info = vk::SubmitInfo::default()
         .wait_semaphores(&wait)
         .signal_semaphores(&signal)
-        .command_buffers(&frame.command_buffers)
+        .command_buffers(&command_buffers)
         .wait_dst_stage_mask(wait_stages);
 
     unsafe {

@@ -1,4 +1,9 @@
-mod image;
-mod logical;
+mod keys;
+mod manager;
+mod resource;
+mod spec;
 
-pub use image::{ImageKey, ImageLifetime, ImageManager, ImageSpec, ResizePolicy};
+pub use keys::*;
+pub use manager::{CompositeImageKey, CompositeImageViewKey, ImageManager};
+pub use resource::{Image, ImageView};
+pub use spec::{ImageLifetime, ImageSpec, ImageViewSpec, ResizePolicy};

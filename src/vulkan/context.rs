@@ -40,8 +40,6 @@ pub struct VulkanContext {
     graphics_queue: ash::vk::Queue,
     present_queue: ash::vk::Queue,
     device: Arc<ash::Device>,
-
-    allocator: vk_mem::Allocator,
 }
 
 impl VulkanContext {
@@ -57,11 +55,6 @@ impl VulkanContext {
             create_logical_device(&instance, physical_device, queue_families_indices)
                 .context("failed to create a logical device and/or queues")?;
 
-        let aci = AllocatorCreateInfo::new(&instance, &device, physical_device);
-
-        let allocator =
-            unsafe { vk_mem::Allocator::new(aci).context("failed to create allocator")? };
-
         Ok(Self {
             surface_instance: Arc::new(surface_instance),
             surface_khr,
@@ -72,7 +65,6 @@ impl VulkanContext {
             graphics_queue,
             present_queue,
             device,
-            allocator,
         })
     }
 
@@ -105,6 +97,8 @@ impl Drop for VulkanContext {
             self.surface_instance
                 .destroy_surface(self.surface_khr, None);
         }
+
+        // drop(self.allocator);
 
         log::trace!("  Destroying Device");
         unsafe {

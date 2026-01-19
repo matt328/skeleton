@@ -1,57 +1,158 @@
+use std::collections::HashMap;
+
 use anyhow::Context;
+use ash::vk;
 
 use crate::render::{
-    Frame,
     framegraph::{
-        alias::AliasRegistry,
-        pass::{CullingPass, ForwardPass, PresentPass, RenderPass},
+        alias::ResolvedRegistry,
+        barrier::BarrierPrecursorPlan,
+        pass::{RenderPass, RenderPassContext},
     },
+    pipeline::PipelineKey,
+    thread::FrameExecutionContext,
 };
 
-pub struct BarrierPrecursorPlan {}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ImageAlias {
+    SwapchainImage,
+    DepthBuffer,
+}
 
-type RenderPassList = Vec<Box<dyn RenderPass>>;
+#[derive(Clone, Copy)]
+pub struct RenderingInfo {
+    pub color_formats: &'static [vk::Format],
+    pub depth_format: Option<vk::Format>,
+    pub stencil_format: Option<vk::Format>,
+}
 
 pub struct FrameGraph {
-    render_passes: RenderPassList,
-    alias_registry: AliasRegistry,
+    render_passes: Vec<Box<dyn RenderPass>>,
+    pass_pipelines: HashMap<u32, PipelineKey>,
+    registry: ResolvedRegistry,
     barrier_plan: BarrierPrecursorPlan,
 }
 
 impl FrameGraph {
-    pub fn new() -> anyhow::Result<Self> {
-        let render_passes: RenderPassList = vec![
-            Box::new(CullingPass::new().context("FrameGraph failed to create culling pass")?),
-            Box::new(ForwardPass::new().context("FrameGraph failed to create forward pass")?),
-            Box::new(PresentPass::new().context("FrameGraph failed to create present pass")?),
-        ];
-
-        let mut alias_registry =
-            AliasRegistry::new().context("FrameGraph failed creating alias registry")?;
-        compile_resources(&render_passes, &mut alias_registry);
-
-        let barrier_plan = bake(&render_passes)?;
-
-        Ok(Self {
+    pub fn new(
+        render_passes: Vec<Box<dyn RenderPass>>,
+        pass_pipelines: HashMap<u32, PipelineKey>,
+        registry: ResolvedRegistry,
+        barrier_plan: BarrierPrecursorPlan,
+    ) -> Self {
+        Self {
             render_passes,
-            alias_registry,
+            pass_pipelines,
+            registry,
             barrier_plan,
-        })
+        }
     }
 
-    pub fn execute(&self, frame: &Frame) {}
-}
+    pub fn execute(&self, ctx: &FrameExecutionContext) -> anyhow::Result<()> {
+        let device = ctx.device;
+        let frame = &ctx.frame;
 
-/// Creates the BarrierPrecursorPlan
-fn bake(passes: &RenderPassList) -> anyhow::Result<BarrierPrecursorPlan> {
-    Ok(BarrierPrecursorPlan {})
-}
+        begin_primary(device, frame.primary_cmd)?;
 
-/// Registers aliases with AliasRegistry
-fn compile_resources(passes: &RenderPassList, registry: &mut AliasRegistry) -> anyhow::Result<()> {
-    for pass in passes {
-        pass.register_aliases(registry)
-            .context("failed to register aliases")?;
+        self.barrier_plan
+            .emit_pre_pass_barriers(device, frame.primary_cmd, frame)?;
+
+        for (i, pass) in self.render_passes.iter().enumerate() {
+            let secondary = frame.secondary_cmds[i];
+            let rendering = pass.rendering_info();
+            begin_secondary(device, secondary, rendering)?;
+
+            let pipeline_key = self.pass_pipelines.get(&pass.id()).context("")?;
+
+            let pipeline = ctx
+                .pipeline_manager
+                .get_pipeline(pipeline_key)
+                .with_context(|| format!("failed to get pipeline for pass {:?}", pass.id()))?;
+            let pipeline_layout = ctx
+                .pipeline_manager
+                .get_pipeline_layout(pipeline_key)
+                .with_context(|| {
+                    format!("failed to get pipeline layout for pass {:?}", pass.id())
+                })?;
+
+            // calculate color_formats, depth_format, and stencil_format and add to RenderPassContext
+
+            let pass_ctx = RenderPassContext {
+                device,
+                cmd: ctx.cmd,
+                pipeline,
+                pipeline_layout,
+                frame,
+                frame_index: frame.index(),
+                registry: &self.registry,
+                image_manager: ctx.image_manager,
+                swapchain_extent: ctx.swapchain_extent,
+                viewport: ctx.viewport,
+                snizzor: ctx.snizzor,
+                render_data: ctx.render_data,
+            };
+
+            pass.execute(&pass_ctx)
+                .context("framegraph failed to execute pass")?;
+
+            end_secondary(device, secondary)?;
+        }
+
+        unsafe {
+            device.cmd_execute_commands(frame.primary_cmd, &frame.secondary_cmds);
+        }
+
+        self.barrier_plan
+            .emit_post_pass_barriers(device, frame.primary_cmd, frame)?;
+
+        end_primary(device, frame.primary_cmd)?;
+
+        Ok(())
     }
-    Ok(())
+}
+
+fn begin_primary(device: &ash::Device, cmd: vk::CommandBuffer) -> anyhow::Result<()> {
+    unsafe {
+        device
+            .begin_command_buffer(cmd, &vk::CommandBufferBeginInfo::default())
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+}
+
+fn begin_secondary(
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    rendering: RenderingInfo,
+) -> anyhow::Result<()> {
+    let mut info = vk::CommandBufferInheritanceRenderingInfo::default()
+        .color_attachment_formats(rendering.color_formats)
+        .depth_attachment_format(rendering.depth_format.unwrap_or(vk::Format::UNDEFINED))
+        .stencil_attachment_format(rendering.stencil_format.unwrap_or(vk::Format::UNDEFINED))
+        .rasterization_samples(vk::SampleCountFlags::TYPE_1);
+
+    let inheritance = vk::CommandBufferInheritanceInfo::default().push_next(&mut info);
+
+    let begin_info = vk::CommandBufferBeginInfo::default().inheritance_info(&inheritance);
+
+    unsafe {
+        device
+            .begin_command_buffer(cmd, &begin_info)
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+}
+
+fn end_secondary(device: &ash::Device, cmd: vk::CommandBuffer) -> anyhow::Result<()> {
+    unsafe {
+        device
+            .end_command_buffer(cmd)
+            .context("device failed to end_command_buffer")
+    }
+}
+
+fn end_primary(device: &ash::Device, cmd: vk::CommandBuffer) -> anyhow::Result<()> {
+    unsafe {
+        device
+            .end_command_buffer(cmd)
+            .map_err(|e| anyhow::anyhow!(e))
+    }
 }

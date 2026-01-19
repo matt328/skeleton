@@ -1,4 +1,3 @@
-mod context;
 mod frame;
 mod frame_ring;
 mod framegraph;
@@ -6,6 +5,7 @@ mod pipeline;
 mod present;
 mod render_packet;
 mod renderer;
+mod shader;
 mod submit;
 mod swapchain;
 mod thread;

@@ -2,31 +2,45 @@ use std::ffi::CString;
 
 use ash::vk;
 
-const VERT_SPV: &[u8] = include_bytes!("triangle.vert.spv");
-const FRAG_SPV: &[u8] = include_bytes!("triangle.frag.spv");
+use crate::render::shader::{ShaderId, ShaderManager};
 
-fn spv_u32(bytes: &[u8]) -> anyhow::Result<&[u32]> {
-    bytemuck::try_cast_slice(bytes)
-        .map_err(|e| anyhow::anyhow!("invalid SPIR-V bytecode alignment: {e:?}"))
+pub struct GraphicsPipelineDesc {
+    pub vertex_id: ShaderId,
+    pub fragment_id: ShaderId,
+    pub topology: vk::PrimitiveTopology,
+    pub color_formats: Vec<vk::Format>,
+    pub depth_format: Option<vk::Format>,
 }
 
-pub fn create_default_pipeline(
+pub struct GraphicsPipeline {
+    pub layout: vk::PipelineLayout,
+    pub pipeline: vk::Pipeline,
+}
+
+pub fn destroy_graphics_pipeline(pipeline: GraphicsPipeline, device: &ash::Device) {
+    unsafe {
+        device.destroy_pipeline_layout(pipeline.layout, None);
+        device.destroy_pipeline(pipeline.pipeline, None);
+    }
+}
+
+pub fn create_graphics_pipeline(
     device: &ash::Device,
-    swapchain_format: vk::Format,
-) -> anyhow::Result<(
-    vk::PipelineLayout,
-    vk::Pipeline,
-    vk::ShaderModule,
-    vk::ShaderModule,
-)> {
+    desc: &GraphicsPipelineDesc,
+    shader_manager: &ShaderManager,
+) -> anyhow::Result<GraphicsPipeline> {
     let pipeline_layout =
         unsafe { device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)? };
-    let formats = [swapchain_format];
-    let mut rendering_info =
-        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&formats);
 
-    let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-        .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+    let mut rendering_info =
+        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&desc.color_formats);
+
+    if let Some(depth) = desc.depth_format {
+        rendering_info = rendering_info.depth_attachment_format(depth);
+    }
+
+    let input_assembly =
+        vk::PipelineInputAssemblyStateCreateInfo::default().topology(desc.topology);
 
     let viewport_state = vk::PipelineViewportStateCreateInfo::default()
         .viewport_count(1)
@@ -48,34 +62,31 @@ pub fn create_default_pipeline(
         .attachments(std::slice::from_ref(&color_blend_attachment));
 
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-
     let dynamic_state =
         vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
-    let vert_module = create_shader_module(device, spv_u32(VERT_SPV)?)?;
-    let frag_module = create_shader_module(device, spv_u32(FRAG_SPV)?)?;
+    let vert_module = shader_manager.module(desc.vertex_id);
+    let frag_module = shader_manager.module(desc.fragment_id);
 
-    let module_name = CString::new("main")?;
+    let entry = CString::new("main")?;
 
     let stages = [
         vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::VERTEX)
             .module(vert_module)
-            .name(&module_name),
+            .name(&entry),
         vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::FRAGMENT)
             .module(frag_module)
-            .name(&module_name),
+            .name(&entry),
     ];
 
-    let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
-        .vertex_binding_descriptions(&[])
-        .vertex_attribute_descriptions(&[]);
+    let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
 
     let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stages)
-        .input_assembly_state(&input_assembly)
         .vertex_input_state(&vertex_input)
+        .input_assembly_state(&input_assembly)
         .viewport_state(&viewport_state)
         .rasterization_state(&raster)
         .multisample_state(&multisample)
@@ -84,21 +95,17 @@ pub fn create_default_pipeline(
         .layout(pipeline_layout)
         .push_next(&mut rendering_info);
 
-    let pipelines = unsafe {
+    let pipeline = unsafe {
         device
             .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
-            .map_err(|e| anyhow::anyhow!("failed to create graphics pipeline: {:?}", e))?
+            .map_err(|e| anyhow::anyhow!("failed to create pipeline: {e:?}"))?
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("no pipeline returned"))?
     };
 
-    let pipeline = pipelines.first()
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("no pipeline returned from create_graphics_pipelines"))?;
-
-    Ok((pipeline_layout, pipeline, frag_module, vert_module))
-}
-
-fn create_shader_module(device: &ash::Device, code: &[u32]) -> anyhow::Result<vk::ShaderModule> {
-    Ok(unsafe {
-        device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None)?
+    Ok(GraphicsPipeline {
+        layout: pipeline_layout,
+        pipeline,
     })
 }
