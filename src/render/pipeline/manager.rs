@@ -59,13 +59,13 @@ impl PipelineManager {
             .pipeline)
     }
 
-    pub fn get_pipeline_layout(&self, key: &PipelineKey) -> anyhow::Result<vk::PipelineLayout> {
-        Ok(self
-            .entries
-            .get(*key)
-            .with_context(|| format!("no pipeline layout registered for key: {:?}", key))?
-            .layout)
-    }
+    // pub fn get_pipeline_layout(&self, key: &PipelineKey) -> anyhow::Result<vk::PipelineLayout> {
+    //     Ok(self
+    //         .entries
+    //         .get(*key)
+    //         .with_context(|| format!("no pipeline layout registered for key: {:?}", key))?
+    //         .layout)
+    // }
 
     pub fn destroy(&mut self, device: &ash::Device) -> anyhow::Result<()> {
         for (_, entry) in self.entries.drain() {

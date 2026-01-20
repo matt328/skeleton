@@ -78,14 +78,13 @@ impl FrameGraph {
                 device,
                 cmd: ctx.cmd,
                 pipeline,
-                frame,
                 frame_index: frame.index(),
                 registry: &self.registry,
                 image_manager: ctx.image_manager,
                 swapchain_extent: ctx.swapchain_extent,
                 viewport: ctx.viewport,
                 snizzor: ctx.snizzor,
-                render_data: ctx.render_data,
+                _render_data: ctx.render_data,
             };
 
             pass.execute(&pass_ctx)

@@ -16,12 +16,12 @@ use crate::{
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum BufferAlias {
-    Placeholder,
+    _Placeholder,
 }
 
 pub struct BarrierPrecursorPlan {
     image_precursors: HashMap<u32, Vec<ImageBarrierPrecursor>>,
-    buffer_precursors: HashMap<u32, Vec<BufferBarrierPrecursor>>,
+    _buffer_precursors: HashMap<u32, Vec<BufferBarrierPrecursor>>,
 }
 
 impl BarrierPrecursorPlan {
@@ -40,7 +40,7 @@ impl BarrierPrecursorPlan {
 
         Self {
             image_precursors,
-            buffer_precursors,
+            _buffer_precursors: buffer_precursors,
         }
     }
 

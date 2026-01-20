@@ -26,7 +26,7 @@ pub struct FramegraphBuilder<'a> {
     device: &'a ash::Device,
     render_passes: Vec<Box<dyn RenderPass>>,
     swapchain_formats: &'a [vk::Format],
-    depth_format: vk::Format,
+    _depth_format: vk::Format,
     pipeline_manager: &'a mut PipelineManager,
 }
 
@@ -45,7 +45,7 @@ impl<'a> FramegraphBuilder<'a> {
             device,
             render_passes: Vec::new(),
             swapchain_formats,
-            depth_format,
+            _depth_format: depth_format,
             pipeline_manager,
         }
     }

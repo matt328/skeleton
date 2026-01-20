@@ -27,14 +27,12 @@ pub struct ImageManager {
 pub enum CompositeImageKey {
     Global(ImageKey),
     PerFrame(LogicalImageKey),
-    ExternalPerFrame(LogicalImageKey),
 }
 
 #[derive(Copy, Clone)]
 pub enum CompositeImageViewKey {
     Global(ImageViewKey),
     PerFrame(LogicalImageViewKey),
-    ExternalPerFrame(LogicalImageViewKey),
 }
 
 impl ImageManager {
@@ -95,8 +93,8 @@ impl ImageManager {
         let logical_view_key = self.logical_image_views.insert(image_view_keys);
 
         (
-            CompositeImageKey::ExternalPerFrame(logical_key),
-            CompositeImageViewKey::ExternalPerFrame(logical_view_key),
+            CompositeImageKey::PerFrame(logical_key),
+            CompositeImageViewKey::PerFrame(logical_view_key),
         )
     }
 
@@ -196,8 +194,7 @@ impl ImageManager {
     pub fn image(&self, key: CompositeImageKey, frame_index: Option<u32>) -> Option<&Image> {
         match key {
             CompositeImageKey::Global(image_key) => self.images.get(image_key),
-            CompositeImageKey::PerFrame(logical_image_key)
-            | CompositeImageKey::ExternalPerFrame(logical_image_key) => {
+            CompositeImageKey::PerFrame(logical_image_key) => {
                 let index = frame_index?;
                 let image_key = self.logical_images.get(logical_image_key)?[index as usize];
                 self.images.get(image_key)
@@ -212,8 +209,7 @@ impl ImageManager {
     ) -> Option<&ImageView> {
         match key {
             CompositeImageViewKey::Global(image_key) => self.image_views.get(image_key),
-            CompositeImageViewKey::PerFrame(logical_image_key)
-            | CompositeImageViewKey::ExternalPerFrame(logical_image_key) => {
+            CompositeImageViewKey::PerFrame(logical_image_key) => {
                 let index = frame_index?;
                 let image_key = self.logical_image_views.get(logical_image_key)?[index as usize];
                 self.image_views.get(image_key)

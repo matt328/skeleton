@@ -6,7 +6,6 @@ use ash::vk;
 use crate::{
     image::ImageManager,
     render::{
-        Frame,
         framegraph::{
             alias::ResolvedRegistry, barrier::BufferAlias, graph::ImageAlias,
             image::ImageRequirement,
@@ -46,14 +45,13 @@ pub struct RenderPassContext<'a> {
     pub device: &'a ash::Device,
     pub cmd: vk::CommandBuffer,
     pub pipeline: vk::Pipeline,
-    pub frame: &'a Frame,
     pub frame_index: usize,
     pub registry: &'a ResolvedRegistry,
     pub image_manager: &'a ImageManager,
     pub swapchain_extent: vk::Extent2D,
     pub viewport: vk::Viewport,
     pub snizzor: vk::Rect2D,
-    pub render_data: &'a RenderData,
+    pub _render_data: &'a RenderData,
 }
 
 pub trait RenderPass {
