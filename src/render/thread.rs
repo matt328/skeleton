@@ -12,7 +12,7 @@ use crate::{
     messages::{EngineControl, ShutdownPhase},
     render::{
         Frame, FrameRing,
-        framegraph::{ForwardPass, FramegraphBuilder, ImageResolveContext},
+        framegraph::{CompositionPass, ForwardPass, FramegraphBuilder, ImageResolveContext},
         pipeline::PipelineManager,
         present::present_frame,
         submit::submit_frame,
@@ -64,9 +64,9 @@ pub fn render_thread(
     };
 
     let frames: Vec<Frame> = vec![
-        Frame::new(&caps.device, command_pool, 1, 0).context("failed to create frame")?,
-        Frame::new(&caps.device, command_pool, 1, 1).context("failed to create frame")?,
-        Frame::new(&caps.device, command_pool, 1, 2).context("failed to create frame")?,
+        Frame::new(&caps.device, command_pool, 2, 0).context("failed to create frame")?,
+        Frame::new(&caps.device, command_pool, 2, 1).context("failed to create frame")?,
+        Frame::new(&caps.device, command_pool, 2, 2).context("failed to create frame")?,
     ];
 
     let mut frame_ring = FrameRing::new(frames);
@@ -106,6 +106,7 @@ pub fn render_thread(
         &mut pipeline_manager,
     )
     .add_pass(ForwardPass::default())
+    .add_pass(CompositionPass::default())
     .build(&image_ctx, swapchain_keys)?;
 
     let exec_resources = FrameExecutionResources {

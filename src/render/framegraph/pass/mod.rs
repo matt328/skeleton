@@ -1,4 +1,5 @@
 mod attachment;
+mod composition;
 mod forward;
 
 use ash::vk;
@@ -63,5 +64,7 @@ pub trait RenderPass {
     fn rendering_info(&self) -> super::graph::RenderingInfo;
     fn pipeline_desc(&self) -> GraphicsPipelineDesc;
 }
+
+pub use composition::CompositionPass;
 
 pub use forward::ForwardPass;

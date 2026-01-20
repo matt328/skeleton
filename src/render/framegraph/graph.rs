@@ -17,6 +17,7 @@ use crate::render::{
 pub enum ImageAlias {
     SwapchainImage,
     DepthBuffer,
+    ForwardColor,
 }
 
 #[derive(Clone, Copy)]
