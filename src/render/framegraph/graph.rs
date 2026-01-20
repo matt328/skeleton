@@ -54,8 +54,13 @@ impl FrameGraph {
 
         begin_primary(device, frame.primary_cmd)?;
 
-        self.barrier_plan
-            .emit_pre_pass_barriers(device, frame.primary_cmd, frame)?;
+        self.barrier_plan.emit_pre_pass_barriers(
+            device,
+            frame.primary_cmd,
+            frame,
+            &ctx.image_manager,
+            &self.registry,
+        )?;
 
         for (i, pass) in self.render_passes.iter().enumerate() {
             let secondary = frame.secondary_cmds[i];
@@ -68,14 +73,13 @@ impl FrameGraph {
                 .pipeline_manager
                 .get_pipeline(pipeline_key)
                 .with_context(|| format!("failed to get pipeline for pass {:?}", pass.id()))?;
+
             let pipeline_layout = ctx
                 .pipeline_manager
                 .get_pipeline_layout(pipeline_key)
                 .with_context(|| {
                     format!("failed to get pipeline layout for pass {:?}", pass.id())
                 })?;
-
-            // calculate color_formats, depth_format, and stencil_format and add to RenderPassContext
 
             let pass_ctx = RenderPassContext {
                 device,
@@ -102,8 +106,13 @@ impl FrameGraph {
             device.cmd_execute_commands(frame.primary_cmd, &frame.secondary_cmds);
         }
 
-        self.barrier_plan
-            .emit_post_pass_barriers(device, frame.primary_cmd, frame)?;
+        self.barrier_plan.emit_post_pass_barriers(
+            device,
+            frame.primary_cmd,
+            frame,
+            &ctx.image_manager,
+            &self.registry,
+        )?;
 
         end_primary(device, frame.primary_cmd)?;
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use ash::vk;
+use ash::{khr::swapchain, vk};
 #[cfg(feature = "tracing")]
 use tracy_client::frame_mark;
 use vk_mem::AllocatorCreateInfo;
@@ -88,24 +88,10 @@ pub fn render_thread(
 
     let extent = swapchain_context.swapchain_extent;
 
-    let swapchain_keys: Vec<_> = swapchain_context
-        .images
-        .iter()
-        .copied()
-        .zip(swapchain_context.image_views.iter().copied())
-        .map(|(image, view)| {
-            image_manager.register_external_image(
-                image,
-                view,
-                swapchain_context.swapchain_format,
-                vk::Extent3D {
-                    width: extent.width,
-                    height: extent.height,
-                    depth: 1,
-                },
-            )
-        })
-        .collect();
+    let swapchain_keys = image_manager.register_external_perframe_image(
+        &swapchain_context.images,
+        &swapchain_context.image_views,
+    );
 
     let aci = AllocatorCreateInfo::new(&caps.instance, &caps.device, *caps.physical_device);
 

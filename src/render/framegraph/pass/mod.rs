@@ -31,12 +31,12 @@ pub struct BufferBarrierPrecursor {
 }
 
 pub struct ImageBarrierPrecursor {
-    alias: ImageAlias,
-    write_access: bool,
-    access_flags: vk::AccessFlags2,
-    pipeline_stage_flags: vk::PipelineStageFlags2,
-    image_layout: vk::ImageLayout,
-    aspect_flags: vk::ImageAspectFlags,
+    pub alias: ImageAlias,
+    pub write_access: bool,
+    pub access_flags: vk::AccessFlags2,
+    pub pipeline_stage_flags: vk::PipelineStageFlags2,
+    pub image_layout: vk::ImageLayout,
+    pub aspect_flags: vk::ImageAspectFlags,
 }
 
 #[inline]

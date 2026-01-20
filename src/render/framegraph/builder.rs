@@ -4,7 +4,7 @@ use anyhow::Context;
 use ash::vk;
 
 use crate::{
-    image::{ImageKey, ImageManager, ImageViewKey},
+    image::{CompositeImageKey, CompositeImageViewKey, ImageKey, ImageManager, ImageViewKey},
     render::{
         framegraph::{
             FrameGraph,
@@ -58,7 +58,7 @@ impl<'a> FramegraphBuilder<'a> {
     pub fn build(
         self,
         ctx: &ImageResolveContext,
-        keys: Vec<(ImageKey, ImageViewKey)>,
+        keys: (CompositeImageKey, CompositeImageViewKey),
     ) -> anyhow::Result<FrameGraph> {
         let mut alias_registry = AliasRegistry::default();
 
@@ -76,7 +76,8 @@ impl<'a> FramegraphBuilder<'a> {
 
         let mut pipelines = HashMap::default();
         for pass in &self.render_passes {
-            let desc = pass.pipeline_desc();
+            let mut desc = pass.pipeline_desc();
+            desc.color_formats = self.swapchain_formats.to_vec();
             let pipeline_key = pipeline_manager.get_or_create(self.device, desc)?;
             pipelines.insert(pass.id(), pipeline_key);
         }

@@ -28,6 +28,7 @@ pub enum CompositeImageKey {
     Global(ImageKey),
     PerFrame(LogicalImageKey),
     External(ImageKey),
+    ExternalPerFrame(LogicalImageKey),
 }
 
 #[derive(Copy, Clone)]
@@ -35,6 +36,7 @@ pub enum CompositeImageViewKey {
     Global(ImageViewKey),
     PerFrame(LogicalImageViewKey),
     External(ImageViewKey),
+    ExternalPerFrame(LogicalImageViewKey),
 }
 
 impl ImageManager {
@@ -82,6 +84,34 @@ impl ImageManager {
             let logical_key = self.logical_images.insert(image_keys);
             Ok(CompositeImageKey::PerFrame(logical_key))
         }
+    }
+
+    pub fn register_external_perframe_image(
+        &mut self,
+        images: &[vk::Image],
+        views: &[vk::ImageView],
+    ) -> (CompositeImageKey, CompositeImageViewKey) {
+        let mut image_keys: Vec<ImageKey> = Vec::with_capacity(images.len());
+        let mut image_view_keys: Vec<ImageViewKey> = Vec::with_capacity(views.len());
+
+        for (img, view) in images.iter().zip(views.iter()) {
+            image_keys.push(self.images.insert(Image {
+                vk_image: *img,
+                owned: None,
+            }));
+            image_view_keys.push(self.image_views.insert(ImageView {
+                vk_image_view: *view,
+                owned: None,
+            }));
+        }
+
+        let logical_key = self.logical_images.insert(image_keys);
+        let logical_view_key = self.logical_image_views.insert(image_view_keys);
+
+        (
+            CompositeImageKey::ExternalPerFrame(logical_key),
+            CompositeImageViewKey::ExternalPerFrame(logical_view_key),
+        )
     }
 
     pub fn register_external_image(
@@ -200,7 +230,8 @@ impl ImageManager {
             CompositeImageKey::Global(image_key) | CompositeImageKey::External(image_key) => {
                 self.images.get(image_key)
             }
-            CompositeImageKey::PerFrame(logical_image_key) => {
+            CompositeImageKey::PerFrame(logical_image_key)
+            | CompositeImageKey::ExternalPerFrame(logical_image_key) => {
                 let index = frame_index?;
                 let image_key = self.logical_images.get(logical_image_key)?[index as usize];
                 self.images.get(image_key)
@@ -216,7 +247,8 @@ impl ImageManager {
         match key {
             CompositeImageViewKey::Global(image_key)
             | CompositeImageViewKey::External(image_key) => self.image_views.get(image_key),
-            CompositeImageViewKey::PerFrame(logical_image_key) => {
+            CompositeImageViewKey::PerFrame(logical_image_key)
+            | CompositeImageViewKey::ExternalPerFrame(logical_image_key) => {
                 let index = frame_index?;
                 let image_key = self.logical_image_views.get(logical_image_key)?[index as usize];
                 self.image_views.get(image_key)

@@ -20,7 +20,7 @@ use crate::{
 pub struct ForwardPass {
     image_requirements: Vec<ImageRequirement>,
     color_value: vk::ClearValue,
-    depth_value: vk::ClearValue,
+    _depth_value: vk::ClearValue,
 }
 
 impl Default for ForwardPass {
@@ -67,7 +67,7 @@ impl Default for ForwardPass {
                 },
             ],
             color_value,
-            depth_value,
+            _depth_value: depth_value,
         }
     }
 }
@@ -125,23 +125,13 @@ impl RenderPass for ForwardPass {
             .store_op(vk::AttachmentStoreOp::STORE)
             .clear_value(self.color_value)];
 
-        let depth_image_view = resolver.image_view(ImageAlias::DepthBuffer)?;
-
-        let depth_attachment_info = vk::RenderingAttachmentInfo::default()
-            .image_view(depth_image_view)
-            .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(self.depth_value);
-
         let rendering_info = vk::RenderingInfo::default()
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D::default(),
                 extent: ctx.swapchain_extent,
             })
             .layer_count(1)
-            .color_attachments(&color_attachment_info)
-            .depth_attachment(&depth_attachment_info);
+            .color_attachments(&color_attachment_info);
 
         unsafe {
             ctx.device.cmd_begin_rendering(ctx.cmd, &rendering_info);

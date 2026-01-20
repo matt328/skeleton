@@ -18,7 +18,7 @@ use crate::{
 
 pub struct AliasRegistry {
     declared: HashMap<ImageAlias, ImageDesc>,
-    externals: HashMap<ImageAlias, Vec<ImageKeys>>,
+    externals: HashMap<ImageAlias, ImageKeys>,
 }
 
 impl Default for AliasRegistry {
@@ -53,12 +53,13 @@ impl AliasRegistry {
     pub fn declare_external_image(
         &mut self,
         alias: ImageAlias,
-        keys: Vec<(ImageKey, ImageViewKey)>,
+        keys: (CompositeImageKey, CompositeImageViewKey),
     ) -> anyhow::Result<()> {
-        let image_keys: Vec<ImageKeys> = keys
-            .into_iter()
-            .map(|(image, view)| ImageKeys { image, view })
-            .collect();
+        let image_keys = ImageKeys {
+            image: keys.0,
+            view: keys.1,
+        };
+
         self.externals.insert(alias, image_keys);
         Ok(())
     }
@@ -85,10 +86,8 @@ impl AliasRegistry {
         }
 
         for (alias, keys) in self.externals.iter() {
-            for k in keys {
-                images.insert(*alias, CompositeImageKey::External(k.image));
-                image_views.insert(*alias, CompositeImageViewKey::External(k.view));
-            }
+            images.insert(*alias, keys.image);
+            image_views.insert(*alias, keys.view);
         }
 
         Ok(ResolvedRegistry {

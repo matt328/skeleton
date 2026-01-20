@@ -3,7 +3,7 @@ use std::fmt;
 use ash::vk;
 
 use crate::{
-    image::{ImageKey, ImageLifetime, ImageViewKey},
+    image::{CompositeImageKey, CompositeImageViewKey, ImageLifetime},
     render::framegraph::graph::ImageAlias,
 };
 
@@ -31,8 +31,8 @@ pub struct ImageDesc {
 }
 
 pub struct ImageKeys {
-    pub image: ImageKey,
-    pub view: ImageViewKey,
+    pub image: CompositeImageKey,
+    pub view: CompositeImageViewKey,
 }
 
 impl fmt::Display for ImageDesc {
