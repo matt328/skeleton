@@ -19,12 +19,12 @@ pub enum BufferAlias {
     _Placeholder,
 }
 
-pub struct BarrierPrecursorPlan {
+pub struct BarrierPlan {
     image_precursors: HashMap<u32, Vec<ImageBarrierPrecursor>>,
     _buffer_precursors: HashMap<u32, Vec<BufferBarrierPrecursor>>,
 }
 
-impl BarrierPrecursorPlan {
+impl BarrierPlan {
     pub fn from_passes(passes: &[Box<dyn RenderPass>]) -> Self {
         let image_precursors = passes
             .iter()

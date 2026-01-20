@@ -9,7 +9,7 @@ use crate::{
         framegraph::{
             FrameGraph,
             alias::{AliasRegistry, ImageResolveContext},
-            barrier::BarrierPrecursorPlan,
+            barrier::BarrierPlan,
             graph::ImageAlias,
             image::ImageCreation,
             pass::RenderPass,
@@ -92,8 +92,8 @@ impl<'a> FramegraphBuilder<'a> {
 }
 
 /// Creates the BarrierPrecursorPlan
-fn bake(passes: &[Box<dyn RenderPass>]) -> anyhow::Result<BarrierPrecursorPlan> {
-    Ok(BarrierPrecursorPlan::from_passes(passes))
+fn bake(passes: &[Box<dyn RenderPass>]) -> anyhow::Result<BarrierPlan> {
+    Ok(BarrierPlan::from_passes(passes))
 }
 
 /// Registers aliases with AliasRegistry

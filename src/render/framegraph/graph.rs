@@ -6,7 +6,7 @@ use ash::vk;
 use crate::render::{
     framegraph::{
         alias::ResolvedRegistry,
-        barrier::BarrierPrecursorPlan,
+        barrier::BarrierPlan,
         pass::{RenderPass, RenderPassContext},
     },
     pipeline::PipelineKey,
@@ -31,7 +31,7 @@ pub struct FrameGraph {
     render_passes: Vec<Box<dyn RenderPass>>,
     pass_pipelines: HashMap<u32, PipelineKey>,
     registry: ResolvedRegistry,
-    barrier_plan: BarrierPrecursorPlan,
+    barrier_plan: BarrierPlan,
 }
 
 impl FrameGraph {
@@ -39,7 +39,7 @@ impl FrameGraph {
         render_passes: Vec<Box<dyn RenderPass>>,
         pass_pipelines: HashMap<u32, PipelineKey>,
         registry: ResolvedRegistry,
-        barrier_plan: BarrierPrecursorPlan,
+        barrier_plan: BarrierPlan,
     ) -> Self {
         Self {
             render_passes,
