@@ -4,7 +4,7 @@ use anyhow::Context;
 use ash::vk;
 
 use crate::{
-    image::{CompositeImageKey, CompositeImageViewKey, ImageKey, ImageManager, ImageViewKey},
+    image::{CompositeImageKey, CompositeImageViewKey, ImageManager},
     render::{
         framegraph::{
             FrameGraph,

@@ -25,7 +25,7 @@ impl Engine {
         let vk_context = VulkanContext::new(window).context("failed to create Vulkan context")?;
 
         let (upload_tx, upload_rx) = unbounded();
-        let (render_tx, render_rx) = unbounded();
+        let (render_tx, _render_rx) = unbounded();
         let (complete_tx, complete_rx) = unbounded();
 
         let control = Arc::new(EngineControl::new());

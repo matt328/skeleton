@@ -1,7 +1,6 @@
 use std::fmt;
 
 use ash::vk::{self, ImageUsageFlags};
-use slotmap::Key;
 
 use crate::image::manager::CompositeImageKey;
 
@@ -181,7 +180,7 @@ impl ImageViewSpec {
         &self,
         image_manager: &ImageManager,
         frame_index: Option<u32>,
-    ) -> anyhow::Result<vk::ImageViewCreateInfo> {
+    ) -> anyhow::Result<vk::ImageViewCreateInfo<'_>> {
         if let Some(image) = image_manager.image(self.image_key, frame_index) {
             Ok(vk::ImageViewCreateInfo::default()
                 .image(image.vk_image())

@@ -74,18 +74,10 @@ impl FrameGraph {
                 .get_pipeline(pipeline_key)
                 .with_context(|| format!("failed to get pipeline for pass {:?}", pass.id()))?;
 
-            let pipeline_layout = ctx
-                .pipeline_manager
-                .get_pipeline_layout(pipeline_key)
-                .with_context(|| {
-                    format!("failed to get pipeline layout for pass {:?}", pass.id())
-                })?;
-
             let pass_ctx = RenderPassContext {
                 device,
                 cmd: ctx.cmd,
                 pipeline,
-                pipeline_layout,
                 frame,
                 frame_index: frame.index(),
                 registry: &self.registry,

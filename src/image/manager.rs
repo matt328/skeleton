@@ -27,7 +27,6 @@ pub struct ImageManager {
 pub enum CompositeImageKey {
     Global(ImageKey),
     PerFrame(LogicalImageKey),
-    External(ImageKey),
     ExternalPerFrame(LogicalImageKey),
 }
 
@@ -35,7 +34,6 @@ pub enum CompositeImageKey {
 pub enum CompositeImageViewKey {
     Global(ImageViewKey),
     PerFrame(LogicalImageViewKey),
-    External(ImageViewKey),
     ExternalPerFrame(LogicalImageViewKey),
 }
 
@@ -52,15 +50,9 @@ impl ImageManager {
                 allocator.create_image(ici, aci)
             })
             .context("failed to create image")?;
-            let allocation_info = allocator.get_allocation_info(&allocation);
             let key = self.images.insert(Image {
                 vk_image,
-                owned: Some(OwnedImageInfo {
-                    allocation,
-                    spec,
-                    allocation_info,
-                    views: smallvec::smallvec![],
-                }),
+                owned: Some(OwnedImageInfo { allocation, spec }),
             });
             Ok(CompositeImageKey::Global(key))
         } else {
@@ -70,15 +62,9 @@ impl ImageManager {
                     allocator.create_image(ici, aci)
                 })
                 .context("failed to create image")?;
-                let allocation_info = allocator.get_allocation_info(&allocation);
                 image_keys.push(self.images.insert(Image {
                     vk_image,
-                    owned: Some(OwnedImageInfo {
-                        allocation,
-                        spec,
-                        allocation_info,
-                        views: smallvec::smallvec![],
-                    }),
+                    owned: Some(OwnedImageInfo { allocation, spec }),
                 }));
             }
             let logical_key = self.logical_images.insert(image_keys);
@@ -114,24 +100,6 @@ impl ImageManager {
         )
     }
 
-    pub fn register_external_image(
-        &mut self,
-        image: vk::Image,
-        view: vk::ImageView,
-        _format: vk::Format,
-        _extent: vk::Extent3D,
-    ) -> (ImageKey, ImageViewKey) {
-        let image_key = self.images.insert(Image {
-            vk_image: image,
-            owned: None,
-        });
-        let image_view_key = self.image_views.insert(ImageView {
-            vk_image_view: view,
-            owned: None,
-        });
-        (image_key, image_view_key)
-    }
-
     pub fn create_image_view(
         &mut self,
         device: &ash::Device,
@@ -164,8 +132,8 @@ impl ImageManager {
                 let key = self.image_views.insert(ImageView {
                     vk_image_view,
                     owned: Some(OwnedImageViewInfo {
-                        spec,
-                        debug_name: None,
+                        _spec: spec,
+                        _debug_name: None,
                     }),
                 });
                 Ok(CompositeImageViewKey::Global(key))
@@ -185,8 +153,8 @@ impl ImageManager {
                     let key = self.image_views.insert(ImageView {
                         vk_image_view,
                         owned: Some(OwnedImageViewInfo {
-                            spec,
-                            debug_name: None,
+                            _spec: spec,
+                            _debug_name: None,
                         }),
                     });
                     image_view_keys.push(key);
@@ -227,9 +195,7 @@ impl ImageManager {
 
     pub fn image(&self, key: CompositeImageKey, frame_index: Option<u32>) -> Option<&Image> {
         match key {
-            CompositeImageKey::Global(image_key) | CompositeImageKey::External(image_key) => {
-                self.images.get(image_key)
-            }
+            CompositeImageKey::Global(image_key) => self.images.get(image_key),
             CompositeImageKey::PerFrame(logical_image_key)
             | CompositeImageKey::ExternalPerFrame(logical_image_key) => {
                 let index = frame_index?;
@@ -245,8 +211,7 @@ impl ImageManager {
         frame_index: Option<u32>,
     ) -> Option<&ImageView> {
         match key {
-            CompositeImageViewKey::Global(image_key)
-            | CompositeImageViewKey::External(image_key) => self.image_views.get(image_key),
+            CompositeImageViewKey::Global(image_key) => self.image_views.get(image_key),
             CompositeImageViewKey::PerFrame(logical_image_key)
             | CompositeImageViewKey::ExternalPerFrame(logical_image_key) => {
                 let index = frame_index?;

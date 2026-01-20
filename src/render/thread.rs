@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use ash::{khr::swapchain, vk};
+use ash::vk;
 #[cfg(feature = "tracing")]
 use tracy_client::frame_mark;
 use vk_mem::AllocatorCreateInfo;
@@ -74,7 +74,7 @@ pub fn render_thread(
     let mut pipeline_manager =
         PipelineManager::new(&caps.device).context("thread failed to create pipeline manager")?;
 
-    let resolve_alias = |alias| -> vk::Extent2D { vk::Extent2D::default() };
+    let resolve_alias = |_alias| -> vk::Extent2D { vk::Extent2D::default() };
 
     let image_ctx = ImageResolveContext {
         device: &caps.device,
@@ -86,7 +86,7 @@ pub fn render_thread(
         frame_count: 3,
     };
 
-    let extent = swapchain_context.swapchain_extent;
+    let _extent = swapchain_context.swapchain_extent;
 
     let swapchain_keys = image_manager.register_external_perframe_image(
         &swapchain_context.images,
@@ -187,5 +187,5 @@ pub fn render_thread(
 }
 
 fn gather_mock_render_data() -> RenderData {
-    RenderData { id: 5 }
+    RenderData { _id: 5 }
 }

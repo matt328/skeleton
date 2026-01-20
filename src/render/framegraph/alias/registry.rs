@@ -4,7 +4,7 @@ use ash::vk;
 
 use crate::{
     image::{
-        CompositeImageKey, CompositeImageViewKey, ImageKey, ImageManager, ImageSpec, ImageViewKey,
+        CompositeImageKey, CompositeImageViewKey, ImageManager, ImageSpec,
         ImageViewSpec, ResizePolicy,
     },
     render::framegraph::{

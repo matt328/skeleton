@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use vk_mem::AllocatorCreateInfo;
 use winit::window::Window;
 
 use ash::vk;

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
-use ash::vk::{self, PipelineStageFlags2};
+use ash::vk::{self};
 
 use crate::{
     image::ImageManager,

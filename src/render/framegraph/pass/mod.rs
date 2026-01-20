@@ -1,7 +1,5 @@
 mod attachment;
-mod culling;
 mod forward;
-mod present;
 
 use ash::vk;
 
@@ -18,16 +16,10 @@ use crate::{
     },
 };
 
-pub struct PassDescription {
-    pub name: String,
-    pub image_requirements: Vec<ImageRequirement>,
-    pub depends_on: Vec<String>,
-}
-
 pub struct BufferBarrierPrecursor {
-    alias: BufferAlias,
-    access_flags: vk::AccessFlags2,
-    pipeline_stage_flags: vk::PipelineStageFlags2,
+    _alias: BufferAlias,
+    _access_flags: vk::AccessFlags2,
+    _pipeline_stage_flags: vk::PipelineStageFlags2,
 }
 
 pub struct ImageBarrierPrecursor {
@@ -53,7 +45,6 @@ pub fn is_write_access(flags: vk::AccessFlags2) -> bool {
 pub struct RenderPassContext<'a> {
     pub device: &'a ash::Device,
     pub cmd: vk::CommandBuffer,
-    pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
     pub frame: &'a Frame,
     pub frame_index: usize,
@@ -75,6 +66,4 @@ pub trait RenderPass {
     fn pipeline_desc(&self) -> GraphicsPipelineDesc;
 }
 
-pub use culling::CullingPass;
 pub use forward::ForwardPass;
-pub use present::PresentPass;

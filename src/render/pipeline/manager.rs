@@ -20,7 +20,7 @@ pub struct GraphicsPipelineDesc {
 pub struct PipelineEntry {
     pipeline: vk::Pipeline,
     layout: vk::PipelineLayout,
-    generation: u32,
+    _generation: u32,
 }
 
 pub struct PipelineManager {
@@ -167,6 +167,6 @@ pub fn create_graphics_pipeline(
     Ok(PipelineEntry {
         pipeline,
         layout: pipeline_layout,
-        generation: 1,
+        _generation: 1,
     })
 }

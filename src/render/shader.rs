@@ -5,8 +5,6 @@ use ash::{util::read_spv, vk};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShaderId {
-    FullscreenTriangleVert,
-    ClearFrag,
     ForwardVert,
     ForwardFrag,
 }
