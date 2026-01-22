@@ -29,7 +29,7 @@ impl fmt::Display for ResizePolicy {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct ImageSpec {
     pub format: vk::Format,
     pub extent: vk::Extent3D,
@@ -40,7 +40,7 @@ pub struct ImageSpec {
     pub resize_policy: ResizePolicy,
     pub lifetime: ImageLifetime,
     pub initial_layout: vk::ImageLayout,
-    pub debug_name: Option<&'static str>,
+    pub debug_name: Option<String>,
 }
 
 impl Default for ImageSpec {
@@ -93,6 +93,11 @@ impl ImageSpec {
 
     pub fn initial_layout(mut self, layout: vk::ImageLayout) -> Self {
         self.initial_layout = layout;
+        self
+    }
+
+    pub fn debug_name(mut self, debug_name: impl AsRef<str>) -> Self {
+        self.debug_name = Some(debug_name.as_ref().to_owned());
         self
     }
 }

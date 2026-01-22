@@ -21,13 +21,14 @@ pub enum ImageSize {
     Relative(ImageAlias, f32),
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ImageDesc {
     pub format: ImageFormat,
     pub size: ImageSize,
     pub usage: vk::ImageUsageFlags,
     pub lifetime: ImageLifetime,
     pub samples: vk::SampleCountFlags,
+    pub debug_name: Option<String>,
 }
 
 pub struct ImageKeys {

@@ -74,7 +74,8 @@ impl SwapchainContext {
                 .clipped(true)
         };
 
-        let swapchain_device = ash::khr::swapchain::Device::new(&caps.instance, &caps.device);
+        let swapchain_device =
+            ash::khr::swapchain::Device::new(&caps.instance, &caps.device_context.device);
         let swapchain = unsafe {
             swapchain_device
                 .create_swapchain(&create_info, None)
@@ -86,6 +87,11 @@ impl SwapchainContext {
                 .get_swapchain_images(swapchain)
                 .context("failed to get swapchain images")?
         };
+
+        for (i, image) in images.iter().enumerate() {
+            caps.device_context
+                .name_object(*image, format!("Swapchain(#{:?})", i))?;
+        }
 
         let image_views: anyhow::Result<Vec<vk::ImageView>> = images
             .iter()
@@ -103,7 +109,8 @@ impl SwapchainContext {
                     });
 
                 unsafe {
-                    caps.device
+                    caps.device_context
+                        .device
                         .create_image_view(&view_info, None)
                         .context("failed to create swapchain image view")
                 }
@@ -111,11 +118,17 @@ impl SwapchainContext {
             .collect();
         let image_views = image_views.context("failed to create swapchain image views")?;
 
+        for (i, image_view) in image_views.iter().enumerate() {
+            caps.device_context
+                .name_object(*image_view, format!("Swapchain(#{:?})", i))?;
+        }
+
         let mut image_semaphores = Vec::new();
         for _ in 0..image_count {
             unsafe {
                 image_semaphores.push(
-                    caps.device
+                    caps.device_context
+                        .device
                         .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
                         .context("failed to create semaphore")?,
                 );
@@ -123,7 +136,7 @@ impl SwapchainContext {
         }
 
         Ok(Self {
-            device: caps.device.clone(),
+            device: caps.device_context.device.clone(),
             swapchain_device,
             swapchain,
             _properties: properties,

@@ -47,6 +47,7 @@ impl Default for CompositionPass {
                         usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
                         lifetime: ImageLifetime::PerFrame,
                         samples: vk::SampleCountFlags::TYPE_1,
+                        debug_name: Some("DepthBuffer".to_string()),
                     }),
                     usage: ImageUsage {
                         access: vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,

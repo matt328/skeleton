@@ -15,7 +15,8 @@ pub fn create_instance(
 ) -> anyhow::Result<(
     ash::khr::surface::Instance,
     vk::SurfaceKHR,
-    Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
+    Option<vk::DebugUtilsMessengerEXT>,
+    Option<ash::ext::debug_utils::Instance>,
     ash::Instance,
 )> {
     let entry = ash::Entry::linked();
@@ -84,6 +85,14 @@ pub fn create_instance(
     }
     .context("failed to create surface")?;
 
-    let debug_messenger = setup_debug_messenger(&entry, &instance);
-    Ok((surface_instance, surface_khr, debug_messenger, instance))
+    let (debug_utils, debug_messenger) = setup_debug_messenger(&entry, &instance)
+        .map(|(a, b)| (Some(a), Some(b)))
+        .unwrap_or((None, None));
+    Ok((
+        surface_instance,
+        surface_khr,
+        debug_messenger,
+        debug_utils,
+        instance,
+    ))
 }

@@ -4,7 +4,10 @@ use anyhow::Context;
 use ash::vk;
 use slotmap::{SlotMap, new_key_type};
 
-use crate::render::shader::{ShaderId, ShaderManager};
+use crate::{
+    render::shader::{ShaderId, ShaderManager},
+    vulkan::DeviceContext,
+};
 
 new_key_type! { pub struct PipelineKey; }
 
@@ -40,11 +43,11 @@ impl PipelineManager {
 
     pub fn get_or_create(
         &mut self,
-        device: &ash::Device,
+        device_context: &DeviceContext,
         desc: GraphicsPipelineDesc,
     ) -> anyhow::Result<PipelineKey> {
         Ok(self.entries.insert(create_graphics_pipeline(
-            device,
+            device_context,
             &desc,
             &self.shader_manager,
         )?))
@@ -80,12 +83,16 @@ impl PipelineManager {
 }
 
 pub fn create_graphics_pipeline(
-    device: &ash::Device,
+    device_context: &DeviceContext,
     desc: &GraphicsPipelineDesc,
     shader_manager: &ShaderManager,
 ) -> anyhow::Result<PipelineEntry> {
-    let pipeline_layout =
-        unsafe { device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)? };
+    let pipeline_layout = unsafe {
+        device_context
+            .device
+            .create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)?
+    };
+    device_context.name_object(pipeline_layout, "RegularPipelineLayout")?;
 
     let mut rendering_info =
         vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&desc.color_formats);
@@ -156,7 +163,8 @@ pub fn create_graphics_pipeline(
         .push_next(&mut rendering_info);
 
     let pipeline = unsafe {
-        device
+        device_context
+            .device
             .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
             .map_err(|e| anyhow::anyhow!("failed to create pipeline: {e:?}"))?
             .into_iter()

@@ -55,15 +55,16 @@ impl FrameGraph {
 
         begin_primary(device, frame.primary_cmd)?;
 
-        self.barrier_plan.emit_pre_pass_barriers(
-            device,
-            frame.primary_cmd,
-            frame,
-            &ctx.image_manager,
-            &self.registry,
-        )?;
-
         for (i, pass) in self.render_passes.iter().enumerate() {
+            self.barrier_plan.emit_pre_pass_barriers(
+                device,
+                frame.primary_cmd,
+                frame,
+                &ctx.image_manager,
+                &self.registry,
+                i as u32,
+            )?;
+
             let secondary = frame.secondary_cmds[i];
             let rendering = pass.rendering_info();
             begin_secondary(device, secondary, rendering)?;

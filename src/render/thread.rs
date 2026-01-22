@@ -52,32 +52,34 @@ pub fn render_thread(
 
     let mut image_manager = ImageManager::default();
 
+    let device = &caps.device_context.device;
+
     let command_pool = {
         let pool_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue_index)
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
         unsafe {
-            caps.device
+            device
                 .create_command_pool(&pool_info, None)
                 .context("failed to create command pool in render_thread")?
         }
     };
 
     let frames: Vec<Frame> = vec![
-        Frame::new(&caps.device, command_pool, 2, 0).context("failed to create frame")?,
-        Frame::new(&caps.device, command_pool, 2, 1).context("failed to create frame")?,
-        Frame::new(&caps.device, command_pool, 2, 2).context("failed to create frame")?,
+        Frame::new(&caps.device_context, command_pool, 2, 0).context("failed to create frame")?,
+        Frame::new(&caps.device_context, command_pool, 2, 1).context("failed to create frame")?,
+        Frame::new(&caps.device_context, command_pool, 2, 2).context("failed to create frame")?,
     ];
 
     let mut frame_ring = FrameRing::new(frames);
 
     let mut pipeline_manager =
-        PipelineManager::new(&caps.device).context("thread failed to create pipeline manager")?;
+        PipelineManager::new(&device).context("thread failed to create pipeline manager")?;
 
     let resolve_alias = |_alias| -> vk::Extent2D { vk::Extent2D::default() };
 
     let image_ctx = ImageResolveContext {
-        device: &caps.device,
+        device_context: &caps.device_context,
         swapchain_extent: swapchain_context.swapchain_extent,
         swapchain_format: swapchain_context.swapchain_format,
         resolve_alias: &resolve_alias,
@@ -93,14 +95,14 @@ pub fn render_thread(
         &swapchain_context.image_views,
     );
 
-    let aci = AllocatorCreateInfo::new(&caps.instance, &caps.device, *caps.physical_device);
+    let aci = AllocatorCreateInfo::new(&caps.instance, &device, *caps.physical_device);
 
     let allocator = unsafe { vk_mem::Allocator::new(aci).context("failed to create allocator")? };
 
     let framegraph = FramegraphBuilder::new(
         &mut image_manager,
         &allocator,
-        &caps.device,
+        caps.device_context.clone(),
         &[swapchain_context.swapchain_format],
         vk::Format::D32_SFLOAT, // TODO: policy-ize
         &mut pipeline_manager,
@@ -115,7 +117,7 @@ pub fn render_thread(
     };
 
     while control.phase() != ShutdownPhase::StopRender {
-        let frame = exec_resources.frame_ring.acquire(&caps.device)?;
+        let frame = exec_resources.frame_ring.acquire(&device)?;
 
         let (image_index, _) = exec_resources
             .swapchain_context
@@ -138,7 +140,7 @@ pub fn render_thread(
         };
 
         let mut fg_ctx = FrameExecutionContext {
-            device: &caps.device,
+            device: &device,
             frame,
             cmd,
             image_manager: &image_manager,
@@ -152,7 +154,7 @@ pub fn render_thread(
         framegraph.execute(&mut fg_ctx)?;
 
         submit_frame(
-            &caps.device,
+            &device,
             caps.queue,
             frame,
             &exec_resources.swapchain_context,
@@ -167,18 +169,18 @@ pub fn render_thread(
     }
 
     unsafe {
-        caps.device
+        device
             .device_wait_idle()
             .context("render: failed waiting idle")?;
-        caps.device.destroy_command_pool(command_pool, None);
+        device.destroy_command_pool(command_pool, None);
     }
-    frame_ring.destroy(&caps.device);
+    frame_ring.destroy(&device);
 
     pipeline_manager
-        .destroy(&caps.device)
+        .destroy(&device)
         .context("failed to destroy pipeline manager")?;
 
-    image_manager.cleanup_per_frames(&caps.device, &allocator)?;
+    image_manager.cleanup_per_frames(&device, &allocator)?;
     drop(allocator);
     swapchain_context.destroy();
 

@@ -32,7 +32,7 @@ impl Engine {
 
         let device_caps = vk_context.device_caps();
         let render_caps = RenderCaps {
-            device: device_caps.device.clone(),
+            device_context: device_caps.device_context.clone(),
             instance: vk_context.swapchain_caps().instance,
             physical_device: Arc::new(vk_context.swapchain_caps().physical_device),
             queue: device_caps.queue,
@@ -40,7 +40,7 @@ impl Engine {
         };
         let swapchain_create_caps = vk_context.swapchain_caps();
         let upload_caps = UploadCaps {
-            device: device_caps.device.clone(),
+            device: device_caps.device_context.device.clone(),
         };
 
         let (error_tx, error_rx) = mpsc::channel::<(String, anyhow::Error)>();

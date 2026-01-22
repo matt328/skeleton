@@ -4,7 +4,7 @@ use ash::vk;
 
 use crate::render::framegraph::{alias::ImageDesc, graph::ImageAlias};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum ImageCreation {
     Declare(ImageDesc),
     UseExisting,

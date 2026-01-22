@@ -5,6 +5,8 @@ use winit::window::Window;
 
 use ash::vk;
 
+use crate::vulkan::DeviceContext;
+
 use super::{
     device::create_logical_device,
     instance::create_instance,
@@ -12,14 +14,14 @@ use super::{
 };
 
 pub struct DeviceCaps {
-    pub device: Arc<ash::Device>,
+    pub device_context: DeviceContext,
     pub queue: vk::Queue,
     pub present_queue: vk::Queue,
 }
 
 pub struct SwapchainCreateCaps {
     pub instance: Arc<ash::Instance>,
-    pub device: Arc<ash::Device>,
+    pub device_context: DeviceContext,
     pub surface_instance: Arc<ash::khr::surface::Instance>,
     pub physical_device: vk::PhysicalDevice,
     pub surface: vk::SurfaceKHR,
@@ -30,7 +32,7 @@ pub struct VulkanContext {
     // Instance
     surface_instance: Arc<ash::khr::surface::Instance>,
     surface_khr: vk::SurfaceKHR,
-    debug_report_callback: Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
+    debug_report_callback: Option<vk::DebugUtilsMessengerEXT>,
     instance: Arc<ash::Instance>,
 
     // Device
@@ -38,12 +40,12 @@ pub struct VulkanContext {
     queue_families_indices: QueueFamiliesIndices,
     graphics_queue: ash::vk::Queue,
     present_queue: ash::vk::Queue,
-    device: Arc<ash::Device>,
+    device_context: DeviceContext,
 }
 
 impl VulkanContext {
     pub fn new(_window: &Window) -> anyhow::Result<Self> {
-        let (surface_instance, surface_khr, debug_report_callback, instance) =
+        let (surface_instance, surface_khr, debug_report_callback, debug_instance, instance) =
             create_instance(_window).context("failed to create instance")?;
 
         let (physical_device, queue_families_indices) =
@@ -54,6 +56,8 @@ impl VulkanContext {
             create_logical_device(&instance, physical_device, queue_families_indices)
                 .context("failed to create a logical device and/or queues")?;
 
+        let debug_utils = Arc::new(ash::ext::debug_utils::Device::new(&instance, &device));
+
         Ok(Self {
             surface_instance: Arc::new(surface_instance),
             surface_khr,
@@ -63,13 +67,21 @@ impl VulkanContext {
             queue_families_indices,
             graphics_queue,
             present_queue,
-            device,
+            device_context: DeviceContext {
+                device,
+                debug_instance: if let Some(d) = debug_instance {
+                    Some(Arc::new(d))
+                } else {
+                    None
+                },
+                debug_utils: Some(debug_utils),
+            },
         })
     }
 
     pub fn device_caps(&self) -> DeviceCaps {
         DeviceCaps {
-            device: self.device.clone(),
+            device_context: self.device_context.clone(),
             queue: self.graphics_queue,
             present_queue: self.present_queue,
         }
@@ -78,7 +90,7 @@ impl VulkanContext {
     pub fn swapchain_caps(&self) -> SwapchainCreateCaps {
         SwapchainCreateCaps {
             instance: self.instance.clone(),
-            device: self.device.clone(),
+            device_context: self.device_context.clone(),
             surface_instance: self.surface_instance.clone(),
             physical_device: self.physical_device,
             surface: self.surface_khr,
@@ -101,16 +113,19 @@ impl Drop for VulkanContext {
 
         log::trace!("  Destroying Device");
         unsafe {
-            self.device
+            self.device_context
+                .device
                 .device_wait_idle()
                 .expect("wait_idle failed during VulkanContext Drop");
-            self.device.destroy_device(None);
+            self.device_context.device.destroy_device(None);
         }
 
-        if let Some((debug_utils, messenger)) = &self.debug_report_callback {
+        if let Some(messenger) = &self.debug_report_callback {
             log::trace!("  Destroying debug messenger");
             unsafe {
-                debug_utils.destroy_debug_utils_messenger(*messenger, None);
+                if let Some(instance) = &self.device_context.debug_instance {
+                    instance.destroy_debug_utils_messenger(*messenger, None);
+                }
             }
         }
 

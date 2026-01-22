@@ -29,6 +29,7 @@ impl Default for ForwardPass {
                     usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
                     lifetime: ImageLifetime::PerFrame,
                     samples: vk::SampleCountFlags::TYPE_1,
+                    debug_name: Some("ForwardColor".to_string()),
                 }),
                 usage: ImageUsage {
                     access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
@@ -46,7 +47,7 @@ impl RenderPass for ForwardPass {
         1
     }
 
-    fn execute(&self, ctx: &super::RenderPassContext) -> anyhow::Result<()> {
+    fn execute(&self, _ctx: &super::RenderPassContext) -> anyhow::Result<()> {
         Ok(())
     }
 

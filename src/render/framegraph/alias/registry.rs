@@ -4,8 +4,8 @@ use ash::vk;
 
 use crate::{
     image::{
-        CompositeImageKey, CompositeImageViewKey, ImageManager, ImageSpec,
-        ImageViewSpec, ResizePolicy,
+        CompositeImageKey, CompositeImageViewKey, ImageManager, ImageSpec, ImageViewSpec,
+        ResizePolicy,
     },
     render::framegraph::{
         alias::{
@@ -14,6 +14,7 @@ use crate::{
         },
         graph::ImageAlias,
     },
+    vulkan::DeviceContext,
 };
 
 pub struct AliasRegistry {
@@ -76,12 +77,19 @@ impl AliasRegistry {
 
         for (alias, desc) in self.declared.iter() {
             let spec = create_image_spec(desc, ctx)?;
-            let image_key = image_manager.create_image(allocator, spec, ctx.frame_count)?;
+
+            let spec_clone = spec.clone();
+
+            let image_key =
+                image_manager.create_image(allocator, ctx.device_context, spec, ctx.frame_count)?;
             images.insert(*alias, image_key);
 
-            let view_spec = create_image_view_spec(image_key, &spec)?;
-            let view_key =
-                image_manager.create_image_view(ctx.device, view_spec, ctx.frame_count)?;
+            let view_spec = create_image_view_spec(image_key, &spec_clone)?;
+            let view_key = image_manager.create_image_view(
+                &ctx.device_context.device,
+                view_spec,
+                ctx.frame_count,
+            )?;
             image_views.insert(*alias, view_key);
         }
 
@@ -98,7 +106,7 @@ impl AliasRegistry {
 }
 
 pub struct ImageResolveContext<'a> {
-    pub device: &'a ash::Device,
+    pub device_context: &'a DeviceContext,
     pub swapchain_extent: vk::Extent2D,
     pub swapchain_format: vk::Format,
     pub resolve_alias: &'a dyn Fn(ImageAlias) -> vk::Extent2D,
@@ -173,7 +181,7 @@ fn create_image_spec(desc: &ImageDesc, ctx: &ImageResolveContext) -> anyhow::Res
         _ => ctx.default_resize_policy,
     };
 
-    let spec = ImageSpec::default()
+    let mut spec = ImageSpec::default()
         .format(format)
         .extent(extent)
         .usage(desc.usage)
@@ -181,6 +189,9 @@ fn create_image_spec(desc: &ImageDesc, ctx: &ImageResolveContext) -> anyhow::Res
         .resize_policy(resize_policy)
         .lifetime(desc.lifetime)
         .initial_layout(ctx.default_initial_layout);
+    if let Some(debug_name) = &desc.debug_name {
+        spec = spec.debug_name(debug_name);
+    }
 
     Ok(spec)
 }

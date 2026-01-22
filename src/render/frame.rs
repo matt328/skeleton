@@ -1,6 +1,8 @@
 use anyhow::Context;
 use ash::vk;
 
+use crate::vulkan::DeviceContext;
+
 pub struct Frame {
     pub index: usize,
     pub fence: vk::Fence,
@@ -12,17 +14,18 @@ pub struct Frame {
 
 impl Frame {
     pub fn new(
-        device: &ash::Device,
+        device_context: &DeviceContext,
         pool: vk::CommandPool,
         pass_count: usize,
         index: usize,
     ) -> anyhow::Result<Self> {
+        let device = &device_context.device;
         let fence = create_fence(device, true).context("failed to create fence")?;
         let image_available =
             create_semaphore(device).context("failed to create image available semaphore")?;
 
-        let primary_cmd = allocate_primary(device, pool)?;
-        let secondary_cmds = allocate_secondary(device, pool, pass_count)?;
+        let primary_cmd = allocate_primary(device_context, pool, index as u32)?;
+        let secondary_cmds = allocate_secondary(device_context, pool, pass_count, index as u32)?;
 
         Ok(Self {
             index,
@@ -80,11 +83,12 @@ fn create_fence(device: &ash::Device, signaled: bool) -> anyhow::Result<vk::Fenc
 }
 
 fn allocate_primary(
-    device: &ash::Device,
+    device_context: &DeviceContext,
     pool: vk::CommandPool,
+    index: u32,
 ) -> anyhow::Result<vk::CommandBuffer> {
     let mut buffers = unsafe {
-        device.allocate_command_buffers(
+        device_context.device.allocate_command_buffers(
             &vk::CommandBufferAllocateInfo::default()
                 .command_pool(pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
@@ -93,15 +97,22 @@ fn allocate_primary(
     }
     .context("failed to allocate primary command buffer")?;
 
-    buffers
+    let cmd = buffers
         .pop()
-        .ok_or_else(|| anyhow::anyhow!("no command buffer allocated"))
+        .ok_or_else(|| anyhow::anyhow!("no command buffer allocated"))?;
+
+    device_context
+        .name_object(cmd, format!("PrimaryCommandBuffer(Frame {:?})", index))
+        .context("failed to name primary command buffer")?;
+
+    Ok(cmd)
 }
 
 fn allocate_secondary(
-    device: &ash::Device,
+    device_context: &DeviceContext,
     pool: vk::CommandPool,
     count: usize,
+    index: u32,
 ) -> anyhow::Result<Vec<vk::CommandBuffer>> {
     let command_buffers = {
         let alloc_info = vk::CommandBufferAllocateInfo::default()
@@ -109,10 +120,14 @@ fn allocate_secondary(
             .level(vk::CommandBufferLevel::SECONDARY)
             .command_buffer_count(count as u32);
         unsafe {
-            device
+            device_context
+                .device
                 .allocate_command_buffers(&alloc_info)
                 .context("failed to allocate command buffers in FrameExecutor")?
         }
     };
+    for (i, cmd) in command_buffers.iter().enumerate() {
+        device_context.name_object(*cmd, format!("Secondary(#{:?}, Frame {:?})", i, index))?;
+    }
     Ok(command_buffers)
 }

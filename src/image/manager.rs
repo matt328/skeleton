@@ -9,6 +9,7 @@ use crate::image::LogicalImageViewKey;
 use crate::image::resource::OwnedImageInfo;
 use crate::image::resource::OwnedImageViewInfo;
 use crate::image::spec::ImageLifetime;
+use crate::vulkan::DeviceContext;
 
 use super::{
     ImageKey, ImageViewKey,
@@ -39,6 +40,7 @@ impl ImageManager {
     pub fn create_image(
         &mut self,
         allocator: &vk_mem::Allocator,
+        device_context: &DeviceContext,
         spec: ImageSpec,
         frame_count: u32,
     ) -> anyhow::Result<CompositeImageKey> {
@@ -48,21 +50,40 @@ impl ImageManager {
                 allocator.create_image(ici, aci)
             })
             .context("failed to create image")?;
+
+            if let Some(debug_name) = spec.debug_name.as_deref() {
+                device_context.name_object(vk_image, debug_name)?;
+            }
+
             let key = self.images.insert(Image {
                 vk_image,
                 owned: Some(OwnedImageInfo { allocation, spec }),
             });
+
             Ok(CompositeImageKey::Global(key))
         } else {
             let mut image_keys: Vec<ImageKey> = Vec::with_capacity(frame_count as usize);
-            for _ in 0..frame_count {
-                let (vk_image, allocation) = with_image_create_info(&spec, |ici, aci| unsafe {
-                    allocator.create_image(ici, aci)
-                })
-                .context("failed to create image")?;
+
+            for i in 0..frame_count {
+                let spec_clone = spec.clone();
+
+                let (vk_image, allocation) =
+                    with_image_create_info(&spec_clone, |ici, aci| unsafe {
+                        allocator.create_image(ici, aci)
+                    })
+                    .context("failed to create image")?;
+
+                if let Some(debug_name) = spec_clone.debug_name.as_deref() {
+                    device_context
+                        .name_object(vk_image, format!("{}(Frame {:?}", debug_name, i))?;
+                }
+
                 image_keys.push(self.images.insert(Image {
                     vk_image,
-                    owned: Some(OwnedImageInfo { allocation, spec }),
+                    owned: Some(OwnedImageInfo {
+                        allocation,
+                        spec: spec_clone,
+                    }),
                 }));
             }
             let logical_key = self.logical_images.insert(image_keys);
