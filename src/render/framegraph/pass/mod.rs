@@ -47,6 +47,7 @@ pub struct RenderPassContext<'a> {
     pub cmd: vk::CommandBuffer,
     pub pipeline: vk::Pipeline,
     pub frame_index: usize,
+    pub swapchain_image_index: u32,
     pub registry: &'a ResolvedRegistry,
     pub image_manager: &'a ImageManager,
     pub swapchain_extent: vk::Extent2D,

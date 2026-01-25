@@ -38,35 +38,16 @@ impl Default for CompositionPass {
         };
 
         CompositionPass {
-            image_requirements: vec![
-                ImageRequirement {
-                    alias: ImageAlias::DepthBuffer,
-                    creation: ImageCreation::Declare(ImageDesc {
-                        format: ImageFormat::Depth,
-                        size: ImageSize::SwapchainRelative { scale: 1.0 },
-                        usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                        lifetime: ImageLifetime::PerFrame,
-                        samples: vk::SampleCountFlags::TYPE_1,
-                        debug_name: Some("DepthBuffer".to_string()),
-                    }),
-                    usage: ImageUsage {
-                        access: vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                        stages: vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
-                        layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                        aspects: vk::ImageAspectFlags::DEPTH,
-                    },
+            image_requirements: vec![ImageRequirement {
+                alias: ImageAlias::SwapchainImage,
+                creation: ImageCreation::UseExisting,
+                usage: ImageUsage {
+                    access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                    stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                    layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    aspects: vk::ImageAspectFlags::COLOR,
                 },
-                ImageRequirement {
-                    alias: ImageAlias::SwapchainImage,
-                    creation: ImageCreation::UseExisting,
-                    usage: ImageUsage {
-                        access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                        stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                        layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        aspects: vk::ImageAspectFlags::COLOR,
-                    },
-                },
-            ],
+            }],
             color_value,
             _depth_value: depth_value,
         }
@@ -115,6 +96,7 @@ impl RenderPass for CompositionPass {
             registry: ctx.registry,
             image_manager: ctx.image_manager,
             frame_index: ctx.frame_index as u32,
+            swapchain_image_index: ctx.swapchain_image_index,
         };
 
         let swapchain_image_view = resolver.image_view(ImageAlias::SwapchainImage)?;

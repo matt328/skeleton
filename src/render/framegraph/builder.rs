@@ -75,6 +75,8 @@ impl<'a> FramegraphBuilder<'a> {
 
         let barrier_plans = build_barrier_plans(&self.render_passes, registry.images.keys())?;
 
+        log::debug!("Barrier Plan: {}", barrier_plans);
+
         let pipeline_manager = self.pipeline_manager;
 
         let mut pipelines = HashMap::default();

@@ -7,7 +7,7 @@ use crate::{
             alias::{ImageDesc, ImageFormat, ImageSize},
             graph::{ImageAlias, RenderingInfo},
             image::{ImageCreation, ImageRequirement, ImageUsage},
-            pass::RenderPass,
+            pass::{ImageBarrierPrecursor, RenderPass, is_write_access},
         },
         pipeline::GraphicsPipelineDesc,
         shader::ShaderId,
@@ -44,7 +44,7 @@ impl Default for ForwardPass {
 
 impl RenderPass for ForwardPass {
     fn id(&self) -> u32 {
-        1
+        0
     }
 
     fn execute(&self, _ctx: &super::RenderPassContext) -> anyhow::Result<()> {
@@ -52,7 +52,17 @@ impl RenderPass for ForwardPass {
     }
 
     fn image_precursors(&self) -> Vec<super::ImageBarrierPrecursor> {
-        vec![]
+        self.image_requirements
+            .iter()
+            .map(|image_req| ImageBarrierPrecursor {
+                alias: image_req.alias,
+                write_access: is_write_access(image_req.usage.access),
+                access_flags: image_req.usage.access,
+                pipeline_stage_flags: image_req.usage.stages,
+                image_layout: image_req.usage.layout,
+                aspect_flags: image_req.usage.aspects,
+            })
+            .collect()
     }
 
     fn buffer_precursors(&self) -> Vec<super::BufferBarrierPrecursor> {

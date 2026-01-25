@@ -4,6 +4,7 @@ use anyhow::Context;
 use ash::vk;
 #[cfg(feature = "tracing")]
 use tracy_client::frame_mark;
+use tracy_client::{Client, plot};
 use vk_mem::AllocatorCreateInfo;
 
 use crate::{
@@ -22,6 +23,11 @@ use crate::{
 };
 
 use super::render_packet::RenderData;
+
+#[inline]
+pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
+    ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32)
+}
 
 pub struct FrameExecutionContext<'a> {
     pub device: &'a ash::Device,
@@ -99,7 +105,7 @@ pub fn render_thread(
 
     let allocator = unsafe { vk_mem::Allocator::new(aci).context("failed to create allocator")? };
 
-    let framegraph = FramegraphBuilder::new(
+    let mut framegraph = FramegraphBuilder::new(
         &mut image_manager,
         &allocator,
         caps.device_context.clone(),
@@ -122,6 +128,18 @@ pub fn render_thread(
         let (image_index, _) = exec_resources
             .swapchain_context
             .acquire_next_image(frame.image_available)?;
+
+        plot!("swapchain image index", image_index as f64);
+        plot!("frame index", frame.index() as f64);
+
+        Client::running().context("no client")?.message(
+            format!("swapchain image index: {:?}", image_index).as_ref(),
+            0,
+        );
+
+        Client::running()
+            .context("no client")?
+            .message(format!("frame index: {:?}", frame.index()).as_ref(), 0);
 
         frame.swapchain_image_index = image_index;
 
@@ -153,11 +171,14 @@ pub fn render_thread(
 
         framegraph.execute(&mut fg_ctx)?;
 
+        let cmd = create_single_use_command_buffer(device, command_pool)?;
+
         submit_frame(
             &device,
             caps.queue,
             frame,
             &exec_resources.swapchain_context,
+            cmd,
         )
         .context("failed to submit frame")?;
 
@@ -185,10 +206,22 @@ pub fn render_thread(
     swapchain_context.destroy();
 
     log::debug!("Render thread shutting down");
-
-    Ok(())
+    anyhow::bail!("forced render-thread failure (ARBOR_FAIL_RENDER)");
 }
 
 fn gather_mock_render_data() -> RenderData {
     RenderData { _id: 5 }
+}
+
+pub fn create_single_use_command_buffer(
+    device: &ash::Device,
+    command_pool: vk::CommandPool,
+) -> anyhow::Result<vk::CommandBuffer> {
+    let alloc_info = vk::CommandBufferAllocateInfo::default()
+        .command_pool(command_pool)
+        .level(vk::CommandBufferLevel::PRIMARY)
+        .command_buffer_count(1);
+
+    let cbs = unsafe { device.allocate_command_buffers(&alloc_info)? };
+    Ok(cbs[0])
 }

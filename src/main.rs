@@ -2,7 +2,7 @@ use anyhow::Context;
 
 #[cfg(feature = "tracing")]
 use tracing_tracy::DefaultConfig;
-use winit::event_loop::{ControlFlow, EventLoop};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 
 use crate::app::{App, AppState};
 
@@ -20,6 +20,10 @@ mod vulkan;
 use tracing::{Level, span};
 #[cfg(feature = "tracing")]
 use tracing_subscriber::layer::SubscriberExt;
+
+enum AppEvent {
+    EngineFailed,
+}
 
 fn main() -> anyhow::Result<()> {
     log4rs::init_file("log4rs.yml", Default::default())
@@ -43,10 +47,16 @@ fn main() -> anyhow::Result<()> {
     #[cfg(feature = "tracing")]
     let _root = span!(Level::INFO, "root").entered();
 
-    let event_loop = EventLoop::new().context("failed to create event loop")?;
+    let event_loop = EventLoop::<AppEvent>::with_user_event()
+        .build()
+        .context("failed to create event loop")?;
+
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut application = App::default();
+    let proxy = event_loop.create_proxy();
+
+    let mut application = App::new(proxy);
+
     event_loop
         .run_app(&mut application)
         .context("failed to run application")?;

@@ -1,16 +1,24 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 use anyhow::Context;
 use ash::vk;
 
-use crate::render::{
-    framegraph::{
-        alias::ResolvedRegistry,
-        barrier::BarrierPlan,
-        pass::{RenderPass, RenderPassContext},
+use crate::{
+    image::CompositeImageKey,
+    render::{
+        framegraph::{
+            COLOR_RANGE, ImageState,
+            alias::ResolvedRegistry,
+            barrier::BarrierPlan,
+            pass::{RenderPass, RenderPassContext},
+            transition_image,
+        },
+        pipeline::PipelineKey,
+        thread::FrameExecutionContext,
     },
-    pipeline::PipelineKey,
-    thread::FrameExecutionContext,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -20,6 +28,18 @@ pub enum ImageAlias {
     ForwardColor,
 }
 
+impl fmt::Display for ImageAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            ImageAlias::SwapchainImage => "SwapchainImage",
+            ImageAlias::DepthBuffer => "DepthBuffer",
+            ImageAlias::ForwardColor => "ForwardColor",
+        };
+
+        f.write_str(name)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct RenderingInfo {
     pub color_formats: &'static [vk::Format],
@@ -27,11 +47,37 @@ pub struct RenderingInfo {
     pub stencil_format: Option<vk::Format>,
 }
 
+struct SwapchainState {
+    first_frame: Vec<bool>,
+}
+
+impl Default for SwapchainState {
+    fn default() -> Self {
+        Self {
+            first_frame: vec![true; 3],
+        }
+    }
+}
+
+type PhysicalImageKey = (CompositeImageKey, u32);
+
+struct GraphFirstUse {
+    seen: HashSet<PhysicalImageKey>,
+}
+
+impl GraphFirstUse {
+    fn is_first_use(&mut self, key: PhysicalImageKey) -> bool {
+        self.seen.insert(key)
+    }
+}
+
 pub struct FrameGraph {
     render_passes: Vec<Box<dyn RenderPass>>,
     pass_pipelines: HashMap<u32, PipelineKey>,
     registry: ResolvedRegistry,
     barrier_plan: BarrierPlan,
+    first_frame: SwapchainState,
+    graph_first_use: GraphFirstUse,
 }
 
 impl FrameGraph {
@@ -46,69 +92,95 @@ impl FrameGraph {
             pass_pipelines,
             registry,
             barrier_plan,
+            first_frame: SwapchainState::default(),
+            graph_first_use: GraphFirstUse {
+                seen: HashSet::default(),
+            },
         }
     }
 
-    pub fn execute(&self, ctx: &FrameExecutionContext) -> anyhow::Result<()> {
+    pub fn execute(&mut self, ctx: &FrameExecutionContext) -> anyhow::Result<()> {
         let device = ctx.device;
         let frame = &ctx.frame;
 
         begin_primary(device, frame.primary_cmd)?;
 
-        for (i, pass) in self.render_passes.iter().enumerate() {
-            self.barrier_plan.emit_pre_pass_barriers(
-                device,
-                frame.primary_cmd,
-                frame,
-                &ctx.image_manager,
-                &self.registry,
-                i as u32,
-            )?;
+        // Composition Pass
+        let composition_pass = self.render_passes.get(1).context("comp pass is None")?;
 
-            let secondary = frame.secondary_cmds[i];
-            let rendering = pass.rendering_info();
-            begin_secondary(device, secondary, rendering)?;
+        let swapchain_image_ckey = self
+            .registry
+            .images
+            .get(&ImageAlias::SwapchainImage)
+            .context("no alias for SwapchainImage registered.")?;
 
-            let pipeline_key = self.pass_pipelines.get(&pass.id()).context("")?;
+        let swapchain_image = ctx
+            .image_manager
+            .image(*swapchain_image_ckey, Some(frame.swapchain_image_index))
+            .context("no image found for SwapchainImage")?;
 
-            let pipeline = ctx
-                .pipeline_manager
-                .get_pipeline(pipeline_key)
-                .with_context(|| format!("failed to get pipeline for pass {:?}", pass.id()))?;
+        let swapchain_first_use = self
+            .graph_first_use
+            .is_first_use((*swapchain_image_ckey, frame.index() as u32));
 
-            let pass_ctx = RenderPassContext {
-                device,
-                cmd: ctx.cmd,
-                pipeline,
-                frame_index: frame.index(),
-                registry: &self.registry,
-                image_manager: ctx.image_manager,
-                swapchain_extent: ctx.swapchain_extent,
-                viewport: ctx.viewport,
-                snizzor: ctx.snizzor,
-                _render_data: ctx.render_data,
-            };
-
-            pass.execute(&pass_ctx)
-                .context("framegraph failed to execute pass")?;
-
-            end_secondary(device, secondary)?;
-        }
-
-        unsafe {
-            device.cmd_execute_commands(frame.primary_cmd, &frame.secondary_cmds);
-        }
-
-        self.barrier_plan.emit_post_pass_barriers(
+        transition_image(
             device,
             frame.primary_cmd,
-            frame,
-            &ctx.image_manager,
-            &self.registry,
-        )?;
+            swapchain_image.vk_image,
+            COLOR_RANGE,
+            if swapchain_first_use {
+                ImageState::UNDEFINED
+            } else {
+                ImageState::PRESENT
+            },
+            ImageState::COLOR_ATTACHMENT_WRITE,
+            format!("swapchain #{:?}", frame.swapchain_image_index).as_ref(),
+        );
+
+        let secondary = frame.secondary_cmds[1];
+
+        begin_secondary(device, secondary, composition_pass.rendering_info())?;
+        let pipeline_key = self
+            .pass_pipelines
+            .get(&composition_pass.id())
+            .context("failed to get pipeline")?;
+
+        let pipeline = ctx
+            .pipeline_manager
+            .get_pipeline(pipeline_key)
+            .with_context(|| {
+                format!(
+                    "failed to get pipeline for pass {:?}",
+                    composition_pass.id()
+                )
+            })?;
+
+        let pass_ctx = RenderPassContext {
+            device,
+            cmd: secondary,
+            pipeline,
+            frame_index: frame.index(),
+            swapchain_image_index: frame.swapchain_image_index,
+            registry: &self.registry,
+            image_manager: ctx.image_manager,
+            swapchain_extent: ctx.swapchain_extent,
+            viewport: ctx.viewport,
+            snizzor: ctx.snizzor,
+            _render_data: ctx.render_data,
+        };
+
+        composition_pass
+            .execute(&pass_ctx)
+            .context("framegraph failed to execute pass")?;
+
+        end_secondary(device, secondary)?;
+
+        unsafe {
+            device.cmd_execute_commands(frame.primary_cmd, &[secondary]);
+        }
 
         end_primary(device, frame.primary_cmd)?;
-
+        self.first_frame.first_frame[frame.index()] = false;
         Ok(())
     }
 }

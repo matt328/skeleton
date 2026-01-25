@@ -90,7 +90,7 @@ impl SwapchainContext {
 
         for (i, image) in images.iter().enumerate() {
             caps.device_context
-                .name_object(*image, format!("Swapchain(#{:?})", i))?;
+                .name_object(*image, format!("SwapchainImage(#{:?})", i))?;
         }
 
         let image_views: anyhow::Result<Vec<vk::ImageView>> = images
@@ -120,7 +120,7 @@ impl SwapchainContext {
 
         for (i, image_view) in image_views.iter().enumerate() {
             caps.device_context
-                .name_object(*image_view, format!("Swapchain(#{:?})", i))?;
+                .name_object(*image_view, format!("SwapchainImageView(#{:?})", i))?;
         }
 
         let mut image_semaphores = Vec::new();

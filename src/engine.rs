@@ -3,8 +3,10 @@ use std::thread;
 
 use anyhow::Context;
 use crossbeam_channel::unbounded;
+use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
+use crate::AppEvent;
 use crate::caps::{RenderCaps, UploadCaps};
 use crate::gameplay::gameplay_thread;
 use crate::messages::{EngineControl, ShutdownPhase};
@@ -21,7 +23,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(window: &Window) -> anyhow::Result<Self> {
+    pub fn new(window: &Window, proxy: EventLoopProxy<AppEvent>) -> anyhow::Result<Self> {
         let vk_context = VulkanContext::new(window).context("failed to create Vulkan context")?;
 
         let (upload_tx, upload_rx) = unbounded();
@@ -82,13 +84,13 @@ impl Engine {
                     }
                 })?
         };
-
         let _watchdog = {
             thread::Builder::new()
                 .name("thread_watchdog".to_string())
                 .spawn(move || {
                     for (name, e) in error_rx {
                         log::error!("Thread {} failed: {:?}", name, e);
+                        let _ = proxy.send_event(AppEvent::EngineFailed);
                     }
                 })?
         };

@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use anyhow::Context;
-use ash::{ext::debug_utils, vk};
+use ash::{ext::debug_utils, khr, vk};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::Window;
 
@@ -37,12 +37,17 @@ pub fn create_instance(
             .application_version(ash::vk::make_api_version(0, 0, 1, 0))
             .engine_name(engine_name.as_c_str())
             .engine_version(ash::vk::make_api_version(0, 0, 1, 0));
+
         let surface_extensions = {
             ash_window::enumerate_required_extensions(display_handle.as_raw())
                 .context("failed to enumerate required extensions")?
         };
 
         let mut extension_names = surface_extensions.to_vec();
+        // log::trace!("renderdoc mode enabled");
+        // extension_names.retain(|&ext| ext != khr::wayland_surface::NAME.as_ptr());
+        // extension_names.push(khr::xcb_surface::NAME.as_ptr());
+
         if ENABLE_VALIDATION_LAYERS {
             extension_names.push(debug_utils::NAME.as_ptr());
         }

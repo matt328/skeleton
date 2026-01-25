@@ -24,7 +24,7 @@ pub struct ImageManager {
     logical_image_views: SlotMap<LogicalImageViewKey, Vec<ImageViewKey>>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CompositeImageKey {
     Global(ImageKey),
     PerFrame(LogicalImageKey),

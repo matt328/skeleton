@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use anyhow::Context;
 use ash::vk::{self};
@@ -35,6 +35,27 @@ struct ImageBarrierDesc {
     pub dst_access: vk::AccessFlags2,
     pub new_layout: vk::ImageLayout,
     pub aspect_flags: vk::ImageAspectFlags,
+}
+impl fmt::Display for ImageBarrierDesc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ImageBarrier {{ \
+             image: {}, \
+             src: [stage: {:?}, access: {:?}, layout: {:?}], \
+             dst: [stage: {:?}, access: {:?}, layout: {:?}], \
+             aspects: {:?} \
+             }}",
+            self.alias,
+            self.src_stage,
+            self.src_access,
+            self.old_layout,
+            self.dst_stage,
+            self.dst_access,
+            self.new_layout,
+            self.aspect_flags,
+        )
+    }
 }
 
 pub struct BarrierPlan {
@@ -106,12 +127,10 @@ impl BarrierPlan {
                     .vk_image;
 
                 let barrier = vk::ImageMemoryBarrier2::default()
-                    // can optimize this based on what the image was last used for
                     .src_stage_mask(desc.src_stage)
                     .dst_stage_mask(desc.dst_stage)
                     .src_access_mask(desc.src_access)
                     .dst_access_mask(desc.dst_access)
-                    // Framegraph should track this
                     .old_layout(desc.old_layout)
                     .new_layout(desc.new_layout)
                     .image(image_handle)
@@ -143,6 +162,7 @@ impl BarrierPlan {
         frame: &Frame,
         image_manager: &ImageManager,
         registry: &ResolvedRegistry,
+        first_frame: bool,
     ) -> anyhow::Result<()> {
         let mut image_barriers = Vec::new();
 
@@ -152,17 +172,19 @@ impl BarrierPlan {
             .context("")?;
 
         let image_handle = image_manager
-            .image(*key, Some(frame.index() as u32))
+            .image(*key, Some(frame.swapchain_image_index))
             .context("")?
             .vk_image;
 
         let barrier = vk::ImageMemoryBarrier2::default()
-            // can optimize this based on what the image was last used for
             .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
             .dst_stage_mask(vk::PipelineStageFlags2::BOTTOM_OF_PIPE)
             .src_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
-            // Framegraph should track this
-            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .old_layout(if first_frame {
+                vk::ImageLayout::UNDEFINED
+            } else {
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+            })
             .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
             .image(image_handle)
             .subresource_range(
@@ -179,6 +201,41 @@ impl BarrierPlan {
         let dependency_info = vk::DependencyInfo::default().image_memory_barriers(&image_barriers);
         unsafe { device.cmd_pipeline_barrier2(cmd, &dependency_info) }
         Ok(())
+    }
+}
+
+impl fmt::Display for BarrierPlan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "BarrierPlan {{")?;
+
+        if self.image_barrier_descs.is_empty() {
+            writeln!(f, "  image barriers: <none>")?;
+        } else {
+            writeln!(f, "  image barriers:")?;
+            for (key, barriers) in &self.image_barrier_descs {
+                writeln!(f, "    pass {}:", key)?;
+
+                if barriers.is_empty() {
+                    writeln!(f, "      <none>")?;
+                    continue;
+                }
+
+                for (i, barrier) in barriers.iter().enumerate() {
+                    writeln!(f, "      [{}] {}", i, barrier)?;
+                }
+            }
+        }
+
+        // Intentionally not dumping buffer precursors yet
+        if !self._buffer_precursors.is_empty() {
+            writeln!(
+                f,
+                "  buffer precursors: {} (not displayed)",
+                self._buffer_precursors.len()
+            )?;
+        }
+
+        write!(f, "}}")
     }
 }
 
