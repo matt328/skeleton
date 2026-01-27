@@ -24,7 +24,7 @@ pub fn upload_thread(
             in_flight += 1;
 
             let _ = render_tx.send(RenderRequest {
-                asset_id: req.asset_id,
+                _asset_id: req.asset_id,
             });
             let _ = complete_tx.send(UploadComplete {
                 asset_id: req.asset_id,

@@ -4,18 +4,12 @@ use crate::image::spec::{ImageSpec, ImageViewSpec};
 
 pub struct OwnedImageInfo {
     pub allocation: vk_mem::Allocation,
-    pub spec: ImageSpec,
+    pub _spec: ImageSpec,
 }
 
 pub struct Image {
     pub vk_image: vk::Image,
     pub owned: Option<OwnedImageInfo>,
-}
-
-impl Image {
-    pub fn vk_image(&self) -> vk::Image {
-        self.vk_image
-    }
 }
 
 pub struct OwnedImageViewInfo {

@@ -11,17 +11,11 @@ pub enum ShaderId {
     CompositionFrag,
 }
 
+#[derive(Default)]
 pub struct ShaderManager {
     modules: HashMap<ShaderId, vk::ShaderModule>,
 }
 
-impl Default for ShaderManager {
-    fn default() -> Self {
-        Self {
-            modules: Default::default(),
-        }
-    }
-}
 
 impl ShaderManager {
     pub fn load_builtin(&mut self, device: &ash::Device) -> anyhow::Result<()> {

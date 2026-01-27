@@ -17,18 +17,10 @@ use crate::{
     vulkan::DeviceContext,
 };
 
+#[derive(Default)]
 pub struct AliasRegistry {
     declared: HashMap<ImageAlias, ImageDesc>,
     externals: HashMap<ImageAlias, ImageKeys>,
-}
-
-impl Default for AliasRegistry {
-    fn default() -> Self {
-        Self {
-            declared: Default::default(),
-            externals: Default::default(),
-        }
-    }
 }
 
 impl AliasRegistry {
@@ -155,19 +147,19 @@ fn derive_aspect_mask(format: vk::Format) -> vk::ImageAspectFlags {
 fn create_image_spec(desc: &ImageDesc, ctx: &ImageResolveContext) -> anyhow::Result<ImageSpec> {
     let format = match desc.format {
         ImageFormat::SwapchainColor => ctx.swapchain_format,
-        ImageFormat::Depth => vk::Format::D32_SFLOAT,
-        ImageFormat::HDRColor => vk::Format::R16G16B16A16_SFLOAT,
+        ImageFormat::_Depth => vk::Format::D32_SFLOAT,
+        ImageFormat::_HDRColor => vk::Format::R16G16B16A16_SFLOAT,
     };
 
     let extent2d = match desc.size {
-        ImageSize::Absolute { width, height } => vk::Extent2D { width, height },
+        ImageSize::_Absolute { width, height } => vk::Extent2D { width, height },
 
         ImageSize::SwapchainRelative { scale } => vk::Extent2D {
             width: (ctx.swapchain_extent.width as f32 * scale) as u32,
             height: (ctx.swapchain_extent.height as f32 * scale) as u32,
         },
 
-        ImageSize::Relative(alias, scale) => {
+        ImageSize::_Relative(alias, scale) => {
             let base = (ctx.resolve_alias)(alias);
             vk::Extent2D {
                 width: (base.width as f32 * scale) as u32,
@@ -183,7 +175,7 @@ fn create_image_spec(desc: &ImageDesc, ctx: &ImageResolveContext) -> anyhow::Res
     };
 
     let resize_policy = match desc.size {
-        ImageSize::Absolute { .. } => ResizePolicy::Fixed,
+        ImageSize::_Absolute { .. } => ResizePolicy::Fixed,
         _ => ctx.default_resize_policy,
     };
 

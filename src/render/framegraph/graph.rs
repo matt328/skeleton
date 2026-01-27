@@ -109,7 +109,7 @@ impl FrameGraph {
                     let mut debug_frame_index: Option<FrameIndex> = None;
 
                     let image = match desc.indexing {
-                        ImageIndexing::Global => match ckey {
+                        ImageIndexing::_Global => match ckey {
                             CompositeImageKey::Global(image_key) => {
                                 ctx.image_manager.image_global(*image_key)
                             }
@@ -162,7 +162,7 @@ impl FrameGraph {
                         desc.subresource_range,
                         old_state,
                         desc.new_state,
-                        format!("Image").as_ref(),
+                        "Image".to_string().as_ref(),
                     )
                 }
             }

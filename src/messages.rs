@@ -7,7 +7,7 @@ pub struct UploadRequest {
 
 #[derive(Debug)]
 pub struct RenderRequest {
-    pub asset_id: u32,
+    pub _asset_id: u32,
 }
 
 #[derive(Debug)]

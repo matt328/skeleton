@@ -111,7 +111,7 @@ fn compile_resources(passes: &RenderPassList, registry: &mut AliasRegistry) -> a
         for req in pass.image_requirements() {
             match &req.creation {
                 ImageCreation::Declare(desc) => {
-                    registry.declare_image(req.access.alias, desc.clone())?;
+                    registry.declare_image(req.access.alias, *desc)?;
                 }
                 ImageCreation::UseExisting => {
                     // registry.require_image(req.alias)?;

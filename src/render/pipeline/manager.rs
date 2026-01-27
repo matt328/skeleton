@@ -34,7 +34,7 @@ pub struct PipelineManager {
 impl PipelineManager {
     pub fn new(device: &ash::Device) -> anyhow::Result<Self> {
         let mut shader_manager = ShaderManager::default();
-        shader_manager.load_builtin(&device)?;
+        shader_manager.load_builtin(device)?;
         Ok(Self {
             entries: Default::default(),
             shader_manager,

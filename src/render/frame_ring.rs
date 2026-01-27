@@ -24,7 +24,7 @@ impl FrameRing {
         let len = self.frames.len();
         let frame = &mut self.frames[self.index];
         frame.number = self.number;
-        self.number = self.number + 1;
+        self.number += 1;
         frame.wait(device).context("failed to wait for frame")?;
         self.index = (self.index + 1) % len;
         Ok(frame)

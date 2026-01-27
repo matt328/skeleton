@@ -25,18 +25,6 @@ pub struct BufferBarrierPrecursor {
 
 pub struct ImageBarrierPrecursor {
     pub access: ImageAccess,
-    pub is_write: bool,
-}
-
-#[inline]
-pub fn is_write_access(flags: vk::AccessFlags2) -> bool {
-    let write_flags = vk::AccessFlags2::COLOR_ATTACHMENT_WRITE
-        | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE
-        | vk::AccessFlags2::TRANSFER_WRITE
-        | vk::AccessFlags2::SHADER_WRITE
-        | vk::AccessFlags2::MEMORY_WRITE;
-
-    flags.intersects(write_flags)
 }
 
 pub struct RenderPassContext<'a> {

@@ -10,7 +10,6 @@ use crate::image::resource::OwnedImageInfo;
 use crate::image::resource::OwnedImageViewInfo;
 use crate::image::spec::ImageLifetime;
 use crate::image::spec::ImageViewTarget;
-use crate::render::Frame;
 use crate::vulkan::DeviceContext;
 
 use super::{
@@ -31,11 +30,6 @@ pub enum CompositeImageViewKey {
     PerFrame(LogicalImageViewKey),
 }
 
-pub enum ImageIndex {
-    Global,
-    Frame(u32),
-}
-
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum FrameIndex {
     Frame(u32),
@@ -50,23 +44,13 @@ impl FrameIndex {
     }
 }
 
+#[derive(Default)]
 pub struct ImageManager {
     images: SlotMap<ImageKey, Image>,
     image_views: SlotMap<ImageViewKey, ImageView>,
 
     logical_images: SlotMap<LogicalImageKey, Vec<ImageKey>>,
     logical_image_views: SlotMap<LogicalImageViewKey, Vec<ImageViewKey>>,
-}
-
-impl Default for ImageManager {
-    fn default() -> Self {
-        Self {
-            images: Default::default(),
-            image_views: Default::default(),
-            logical_images: Default::default(),
-            logical_image_views: Default::default(),
-        }
-    }
 }
 
 impl ImageManager {
@@ -140,7 +124,10 @@ impl ImageManager {
 
                 let key = self.images.insert(Image {
                     vk_image,
-                    owned: Some(OwnedImageInfo { allocation, spec }),
+                    owned: Some(OwnedImageInfo {
+                        allocation,
+                        _spec: spec,
+                    }),
                 });
 
                 Ok(CompositeImageKey::Global(key))
@@ -160,23 +147,19 @@ impl ImageManager {
 
                     if let Some(debug_name) = spec_clone.debug_name.as_deref() {
                         device_context
-                            .name_object(vk_image, format!("{}(Frame {:?}", debug_name, i))?;
+                            .name_object(vk_image, format!("{}(Frame {:?})", debug_name, i))?;
                     }
 
                     image_keys.push(self.images.insert(Image {
                         vk_image,
                         owned: Some(OwnedImageInfo {
                             allocation,
-                            spec: spec_clone,
+                            _spec: spec_clone,
                         }),
                     }));
                 }
                 let logical_key = self.logical_images.insert(image_keys);
                 Ok(CompositeImageKey::PerFrame(logical_key))
-            }
-
-            ImageLifetime::External => {
-                anyhow::bail!("external images must be registered explicitly")
             }
         }
     }
@@ -260,7 +243,7 @@ impl ImageManager {
                     let key = self.image_views.insert(ImageView {
                         vk_image_view,
                         owned: Some(OwnedImageViewInfo {
-                            _spec: spec.clone(),
+                            _spec: spec,
                             _debug_name: None,
                         }),
                     });
@@ -274,31 +257,6 @@ impl ImageManager {
         }
     }
 
-    pub fn destroy_image_view(
-        &mut self,
-        device: &ash::Device,
-        key: ImageViewKey,
-    ) -> anyhow::Result<()> {
-        log::trace!("Destroying ImageView: {:?}", key);
-        if let Some(image_view) = self.image_views.remove(key) {
-            if let Some(_) = image_view.owned {
-                unsafe { device.destroy_image_view(image_view.vk_image_view, None) }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn destroy_image(&mut self, key: ImageKey, allocator: &vk_mem::Allocator) {
-        log::trace!("Destroying Image: {:?}", key);
-        if let Some(image) = self.images.remove(key) {
-            if let Some(mut owned) = image.owned {
-                unsafe {
-                    allocator.destroy_image(image.vk_image, &mut owned.allocation);
-                }
-            }
-        }
-    }
-
     pub fn cleanup_per_frames(
         &mut self,
         device: &ash::Device,
@@ -306,21 +264,21 @@ impl ImageManager {
     ) -> anyhow::Result<()> {
         for (_, views) in self.logical_image_views.drain() {
             for key in views {
-                if let Some(view) = self.image_views.remove(key) {
-                    if view.owned.is_some() {
-                        unsafe { device.destroy_image_view(view.vk_image_view, None) }
-                    }
+                if let Some(view) = self.image_views.remove(key)
+                    && view.owned.is_some()
+                {
+                    unsafe { device.destroy_image_view(view.vk_image_view, None) }
                 }
             }
         }
 
         for (_, images) in self.logical_images.drain() {
             for key in images {
-                if let Some(image) = self.images.remove(key) {
-                    if let Some(mut owned) = image.owned {
-                        unsafe {
-                            allocator.destroy_image(image.vk_image, &mut owned.allocation);
-                        }
+                if let Some(image) = self.images.remove(key)
+                    && let Some(mut owned) = image.owned
+                {
+                    unsafe {
+                        allocator.destroy_image(image.vk_image, &mut owned.allocation);
                     }
                 }
             }

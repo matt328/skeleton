@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use anyhow::Context;
-use ash::{ext::debug_utils, khr, vk};
+use ash::{ext::debug_utils, vk};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::Window;
 
@@ -10,15 +10,15 @@ use super::debug::{
     get_layer_names_and_pointers, setup_debug_messenger,
 };
 
-pub fn create_instance(
-    window: &Window,
-) -> anyhow::Result<(
+type InstanceComponents = (
     ash::khr::surface::Instance,
     vk::SurfaceKHR,
     Option<vk::DebugUtilsMessengerEXT>,
     Option<ash::ext::debug_utils::Instance>,
     ash::Instance,
-)> {
+);
+
+pub fn create_instance(window: &Window) -> anyhow::Result<InstanceComponents> {
     let entry = ash::Entry::linked();
     let display_handle = window
         .display_handle()

@@ -2,18 +2,12 @@ use std::fmt;
 
 use ash::vk::{self, ImageUsageFlags};
 
-use crate::image::{
-    ImageKey, LogicalImageKey,
-    manager::{CompositeImageKey, FrameIndex},
-};
-
-use super::ImageManager;
+use crate::image::{ImageKey, LogicalImageKey};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ImageLifetime {
     Global,
     PerFrame,
-    External,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -98,11 +92,6 @@ impl ImageSpec {
         self.initial_layout = layout;
         self
     }
-
-    pub fn debug_name(mut self, debug_name: impl AsRef<str>) -> Self {
-        self.debug_name = Some(debug_name.as_ref().to_owned());
-        self
-    }
 }
 
 impl fmt::Display for ImageSpec {
@@ -145,7 +134,6 @@ pub struct ImageViewSpec {
     pub level_count: u32,
     pub base_array_layer: u32,
     pub layer_count: u32,
-    pub debug_name: Option<&'static str>,
 }
 impl ImageViewSpec {
     pub fn new(target: ImageViewTarget) -> Self {
@@ -158,7 +146,6 @@ impl ImageViewSpec {
             level_count: 1,
             base_array_layer: 0,
             layer_count: 1,
-            debug_name: None,
         }
     }
     pub fn view_type(mut self, view_type: vk::ImageViewType) -> Self {
@@ -190,7 +177,7 @@ impl ImageViewSpec {
 }
 
 impl ImageViewSpec {
-    pub fn to_vk(&self, image: vk::Image) -> vk::ImageViewCreateInfo<'_> {
+    pub fn to_vk(self, image: vk::Image) -> vk::ImageViewCreateInfo<'static> {
         vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(self.view_type)

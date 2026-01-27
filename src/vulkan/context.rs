@@ -69,11 +69,7 @@ impl VulkanContext {
             present_queue,
             device_context: DeviceContext {
                 device,
-                debug_instance: if let Some(d) = debug_instance {
-                    Some(Arc::new(d))
-                } else {
-                    None
-                },
+                debug_instance: debug_instance.map(Arc::new),
                 debug_utils: Some(debug_utils),
             },
         })

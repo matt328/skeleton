@@ -6,7 +6,7 @@ use crate::render::framegraph::{ImageState, alias::ImageDesc, graph::ImageAlias}
 
 #[derive(Copy, Clone, Debug)]
 pub enum ImageIndexing {
-    Global,
+    _Global,
     PerFrame(FrameIndexKind),
 }
 
@@ -29,10 +29,6 @@ pub struct ImageUsage {
 }
 
 impl ImageUsage {
-    pub fn to_state(self) -> ImageState {
-        self.state
-    }
-
     pub fn subresource_range(self) -> vk::ImageSubresourceRange {
         vk::ImageSubresourceRange {
             aspect_mask: self.aspects,

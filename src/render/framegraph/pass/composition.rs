@@ -9,7 +9,7 @@ use crate::render::{
         },
         pass::{
             BufferBarrierPrecursor, ImageBarrierPrecursor, RenderPass, RenderPassContext,
-            attachment::AttachmentResolver, is_write_access,
+            attachment::AttachmentResolver,
         },
     },
     pipeline::GraphicsPipelineDesc,
@@ -86,7 +86,6 @@ impl RenderPass for CompositionPass {
             .iter()
             .map(|image_req| ImageBarrierPrecursor {
                 access: image_req.access,
-                is_write: is_write_access(image_req.access.usage.state.access),
             })
             .collect()
     }

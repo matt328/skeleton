@@ -2,7 +2,7 @@ use anyhow::Context;
 
 #[cfg(feature = "tracing")]
 use tracing_tracy::DefaultConfig;
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
+use winit::event_loop::{ControlFlow, EventLoop};
 
 use crate::app::{App, AppState};
 

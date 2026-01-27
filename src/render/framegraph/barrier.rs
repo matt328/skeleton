@@ -2,28 +2,16 @@ use std::{collections::HashMap, fmt};
 
 use ash::vk::{self};
 
-use crate::{
-    image::{ImageKey, LogicalImageKey},
-    render::framegraph::{
-        ImageState,
-        graph::ImageAlias,
-        image::{FrameIndexKind, ImageIndexing},
-        pass::{BufferBarrierPrecursor, ImageBarrierPrecursor, RenderPass},
-    },
+use crate::render::framegraph::{
+    ImageState,
+    graph::ImageAlias,
+    image::ImageIndexing,
+    pass::{BufferBarrierPrecursor, ImageBarrierPrecursor, RenderPass},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum BufferAlias {
     _Placeholder,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum ImageUse {
-    Global(ImageKey),
-    PerFrame {
-        key: LogicalImageKey,
-        index: FrameIndexKind,
-    },
 }
 
 pub struct ImageBarrierDesc {
@@ -77,7 +65,7 @@ impl BarrierPlan {
 
                 image_barrier_descs
                     .entry(pass.id())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(barrier_desc);
 
                 image_states.insert(precursor.access.alias, precursor.access.usage.state);
@@ -86,8 +74,7 @@ impl BarrierPlan {
 
         let buffer_precursors = passes
             .iter()
-            .enumerate()
-            .map(|(_, pass)| (pass.id(), pass.buffer_precursors()))
+            .map(|pass| (pass.id(), pass.buffer_precursors()))
             .collect::<HashMap<u32, Vec<BufferBarrierPrecursor>>>();
 
         Self {

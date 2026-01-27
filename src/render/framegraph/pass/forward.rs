@@ -12,9 +12,7 @@ use crate::{
                 FrameIndexKind, ImageAccess, ImageCreation, ImageIndexing, ImageRequirement,
                 ImageUsage,
             },
-            pass::{
-                ImageBarrierPrecursor, RenderPass, attachment::AttachmentResolver, is_write_access,
-            },
+            pass::{ImageBarrierPrecursor, RenderPass, attachment::AttachmentResolver},
         },
         pipeline::GraphicsPipelineDesc,
         shader::ShaderId,
@@ -106,7 +104,6 @@ impl RenderPass for ForwardPass {
             .iter()
             .map(|image_req| ImageBarrierPrecursor {
                 access: image_req.access,
-                is_write: is_write_access(image_req.access.usage.state.access),
             })
             .collect()
     }

@@ -10,15 +10,15 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ImageFormat {
     SwapchainColor,
-    Depth,
-    HDRColor,
+    _Depth,
+    _HDRColor,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ImageSize {
-    Absolute { width: u32, height: u32 },
+    _Absolute { width: u32, height: u32 },
     SwapchainRelative { scale: f32 },
-    Relative(ImageAlias, f32),
+    _Relative(ImageAlias, f32),
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -49,8 +49,8 @@ impl fmt::Display for ImageFormat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             ImageFormat::SwapchainColor => "SwapchainColor",
-            ImageFormat::Depth => "Depth",
-            ImageFormat::HDRColor => "HDRColor",
+            ImageFormat::_Depth => "Depth",
+            ImageFormat::_HDRColor => "HDRColor",
         };
         f.write_str(s)
     }
@@ -59,13 +59,13 @@ impl fmt::Display for ImageFormat {
 impl fmt::Display for ImageSize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            ImageSize::Absolute { width, height } => {
+            ImageSize::_Absolute { width, height } => {
                 write!(f, "{}x{}", width, height)
             }
             ImageSize::SwapchainRelative { scale } => {
                 write!(f, "Swapchain * {:.2}", scale)
             }
-            ImageSize::Relative(alias, scale) => {
+            ImageSize::_Relative(alias, scale) => {
                 write!(f, "{:?} * {:.2}", alias, scale)
             }
         }

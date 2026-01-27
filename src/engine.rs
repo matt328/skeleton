@@ -42,7 +42,7 @@ impl Engine {
         };
         let swapchain_create_caps = vk_context.swapchain_caps();
         let upload_caps = UploadCaps {
-            device: device_caps.device_context.device.clone(),
+            _device: device_caps.device_context.device.clone(),
         };
 
         let (error_tx, error_rx) = mpsc::channel::<(String, anyhow::Error)>();

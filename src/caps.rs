@@ -13,5 +13,5 @@ pub struct RenderCaps {
 }
 
 pub struct UploadCaps {
-    pub device: Arc<ash::Device>,
+    pub _device: Arc<ash::Device>,
 }

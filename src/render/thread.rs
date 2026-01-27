@@ -10,7 +10,7 @@ use vk_mem::AllocatorCreateInfo;
 use crate::{
     caps::RenderCaps,
     image::ImageManager,
-    messages::{EngineControl, ShutdownPhase},
+    messages::EngineControl,
     render::{
         Frame, FrameRing,
         framegraph::{CompositionPass, ForwardPass, FramegraphBuilder, ImageResolveContext},
@@ -24,15 +24,9 @@ use crate::{
 
 use super::render_packet::RenderData;
 
-#[inline]
-pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> u32 {
-    ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32)
-}
-
 pub struct FrameExecutionContext<'a> {
     pub device: &'a ash::Device,
     pub frame: &'a mut Frame,
-    pub cmd: vk::CommandBuffer,
 
     pub image_manager: &'a ImageManager,
     pub pipeline_manager: &'a PipelineManager,
@@ -49,7 +43,7 @@ struct FrameExecutionResources<'a> {
 
 pub fn render_thread(
     caps: RenderCaps,
-    control: Arc<EngineControl>,
+    _control: Arc<EngineControl>,
     swapchain_create_caps: SwapchainCreateCaps,
 ) -> anyhow::Result<()> {
     let queue_index = swapchain_create_caps.queue_families.graphics_index;
@@ -79,7 +73,7 @@ pub fn render_thread(
     let mut frame_ring = FrameRing::new(frames);
 
     let mut pipeline_manager =
-        PipelineManager::new(&device).context("thread failed to create pipeline manager")?;
+        PipelineManager::new(device).context("thread failed to create pipeline manager")?;
 
     let resolve_alias = |_alias| -> vk::Extent2D { vk::Extent2D::default() };
 
@@ -98,7 +92,7 @@ pub fn render_thread(
     let swapchain_keys = image_manager
         .register_external_per_frame(&swapchain_context.images, &swapchain_context.image_views);
 
-    let aci = AllocatorCreateInfo::new(&caps.instance, &device, *caps.physical_device);
+    let aci = AllocatorCreateInfo::new(&caps.instance, device, *caps.physical_device);
 
     let allocator = unsafe { vk_mem::Allocator::new(aci).context("failed to create allocator")? };
 
@@ -121,7 +115,7 @@ pub fn render_thread(
 
     // while control.phase() != ShutdownPhase::StopRender {
     for _ in 0..10 {
-        let frame = exec_resources.frame_ring.acquire(&device)?;
+        let frame = exec_resources.frame_ring.acquire(device)?;
 
         let (image_index, _) = exec_resources
             .swapchain_context
@@ -143,7 +137,6 @@ pub fn render_thread(
 
         let render_data = gather_mock_render_data();
 
-        let cmd = frame.primary_cmd;
         let extent = exec_resources.swapchain_context.swapchain_extent;
         let viewport = vk::Viewport {
             height: extent.height as f32,
@@ -155,10 +148,9 @@ pub fn render_thread(
             extent,
         };
 
-        let mut fg_ctx = FrameExecutionContext {
-            device: &device,
+        let fg_ctx = FrameExecutionContext {
+            device,
             frame,
-            cmd,
             image_manager: &image_manager,
             pipeline_manager: &pipeline_manager,
             swapchain_extent: extent,
@@ -167,20 +159,20 @@ pub fn render_thread(
             render_data: &render_data,
         };
 
-        framegraph.execute(&mut fg_ctx)?;
+        framegraph.execute(&fg_ctx)?;
 
         let cmd = create_single_use_command_buffer(device, command_pool)?;
 
         submit_frame(
-            &device,
+            device,
             caps.queue,
             frame,
-            &exec_resources.swapchain_context,
+            exec_resources.swapchain_context,
             cmd,
         )
         .context("failed to submit frame")?;
 
-        present_frame(caps.present_queue, frame, &exec_resources.swapchain_context)
+        present_frame(caps.present_queue, frame, exec_resources.swapchain_context)
             .context("failed to present frame")?;
 
         #[cfg(feature = "tracing")]
@@ -193,13 +185,13 @@ pub fn render_thread(
             .context("render: failed waiting idle")?;
         device.destroy_command_pool(command_pool, None);
     }
-    frame_ring.destroy(&device);
+    frame_ring.destroy(device);
 
     pipeline_manager
-        .destroy(&device)
+        .destroy(device)
         .context("failed to destroy pipeline manager")?;
 
-    image_manager.cleanup_per_frames(&device, &allocator)?;
+    image_manager.cleanup_per_frames(device, &allocator)?;
     drop(allocator);
     swapchain_context.destroy();
 
