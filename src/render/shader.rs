@@ -7,6 +7,8 @@ use ash::{util::read_spv, vk};
 pub enum ShaderId {
     ForwardVert,
     ForwardFrag,
+    CompositionVert,
+    CompositionFrag,
 }
 
 pub struct ShaderManager {
@@ -36,6 +38,20 @@ impl ShaderManager {
             include_bytes!("forward.frag.spv"),
         )
         .context("failed to load forward.frag.spv")?;
+
+        self.load(
+            device,
+            ShaderId::CompositionVert,
+            include_bytes!("composition.vert.spv"),
+        )
+        .context("failed to load composition.vert.spv")?;
+
+        self.load(
+            device,
+            ShaderId::CompositionFrag,
+            include_bytes!("composition.frag.spv"),
+        )
+        .context("failed to load composition.frag.spv")?;
 
         Ok(())
     }

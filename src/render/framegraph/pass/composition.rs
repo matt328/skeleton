@@ -1,20 +1,19 @@
 use ash::vk::{self};
 
-use crate::{
-    image::ImageLifetime,
-    render::{
-        framegraph::{
-            alias::{ImageDesc, ImageFormat, ImageSize},
-            graph::ImageAlias,
-            image::{ImageCreation, ImageRequirement, ImageUsage},
-            pass::{
-                BufferBarrierPrecursor, ImageBarrierPrecursor, RenderPass, RenderPassContext,
-                attachment::AttachmentResolver, is_write_access,
-            },
+use crate::render::{
+    framegraph::{
+        ImageState,
+        graph::ImageAlias,
+        image::{
+            FrameIndexKind, ImageAccess, ImageCreation, ImageIndexing, ImageRequirement, ImageUsage,
         },
-        pipeline::GraphicsPipelineDesc,
-        shader::ShaderId,
+        pass::{
+            BufferBarrierPrecursor, ImageBarrierPrecursor, RenderPass, RenderPassContext,
+            attachment::AttachmentResolver, is_write_access,
+        },
     },
+    pipeline::GraphicsPipelineDesc,
+    shader::ShaderId,
 };
 
 pub struct CompositionPass {
@@ -38,16 +37,35 @@ impl Default for CompositionPass {
         };
 
         CompositionPass {
-            image_requirements: vec![ImageRequirement {
-                alias: ImageAlias::SwapchainImage,
-                creation: ImageCreation::UseExisting,
-                usage: ImageUsage {
-                    access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                    stages: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                    layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                    aspects: vk::ImageAspectFlags::COLOR,
+            image_requirements: vec![
+                ImageRequirement {
+                    access: ImageAccess {
+                        alias: ImageAlias::SwapchainImage,
+                        usage: ImageUsage {
+                            state: ImageState {
+                                access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                                stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                                layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                            },
+                            aspects: vk::ImageAspectFlags::COLOR,
+                        },
+                        indexing: ImageIndexing::PerFrame(FrameIndexKind::Swapchain),
+                    },
+                    creation: ImageCreation::UseExisting,
                 },
-            }],
+                ImageRequirement {
+                    access: ImageAccess {
+                        alias: ImageAlias::ForwardColor,
+                        usage: ImageUsage {
+                            // Create ImageState for Sampling an image
+                            state: ImageState::COLOR_ATTACHMENT_WRITE,
+                            aspects: vk::ImageAspectFlags::COLOR,
+                        },
+                        indexing: ImageIndexing::PerFrame(FrameIndexKind::Frame),
+                    },
+                    creation: ImageCreation::UseExisting,
+                },
+            ],
             color_value,
             _depth_value: depth_value,
         }
@@ -67,12 +85,8 @@ impl RenderPass for CompositionPass {
         self.image_requirements
             .iter()
             .map(|image_req| ImageBarrierPrecursor {
-                alias: image_req.alias,
-                write_access: is_write_access(image_req.usage.access),
-                access_flags: image_req.usage.access,
-                pipeline_stage_flags: image_req.usage.stages,
-                image_layout: image_req.usage.layout,
-                aspect_flags: image_req.usage.aspects,
+                access: image_req.access,
+                is_write: is_write_access(image_req.access.usage.state.access),
             })
             .collect()
     }
@@ -83,8 +97,8 @@ impl RenderPass for CompositionPass {
 
     fn pipeline_desc(&self) -> GraphicsPipelineDesc {
         GraphicsPipelineDesc {
-            vertex_id: ShaderId::ForwardVert,
-            fragment_id: ShaderId::ForwardFrag,
+            vertex_id: ShaderId::CompositionVert,
+            fragment_id: ShaderId::CompositionFrag,
             topology: vk::PrimitiveTopology::TRIANGLE_LIST,
             color_formats: vec![],
             depth_format: None,
@@ -120,8 +134,6 @@ impl RenderPass for CompositionPass {
             ctx.device.cmd_begin_rendering(ctx.cmd, &rendering_info);
             ctx.device
                 .cmd_bind_pipeline(ctx.cmd, vk::PipelineBindPoint::GRAPHICS, ctx.pipeline);
-            // set up push constants
-            // bind texture_shader_bindings
             ctx.device.cmd_set_viewport(ctx.cmd, 0, &[ctx.viewport]);
             ctx.device.cmd_set_scissor(ctx.cmd, 0, &[ctx.snizzor]);
             ctx.device.cmd_draw(ctx.cmd, 3, 1, 0, 0);

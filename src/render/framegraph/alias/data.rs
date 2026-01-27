@@ -7,28 +7,27 @@ use crate::{
     render::framegraph::graph::ImageAlias,
 };
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ImageFormat {
     SwapchainColor,
     Depth,
     HDRColor,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ImageSize {
     Absolute { width: u32, height: u32 },
     SwapchainRelative { scale: f32 },
     Relative(ImageAlias, f32),
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct ImageDesc {
     pub format: ImageFormat,
     pub size: ImageSize,
     pub usage: vk::ImageUsageFlags,
     pub lifetime: ImageLifetime,
     pub samples: vk::SampleCountFlags,
-    pub debug_name: Option<String>,
 }
 
 pub struct ImageKeys {

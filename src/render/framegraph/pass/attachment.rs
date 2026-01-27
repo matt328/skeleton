@@ -2,7 +2,7 @@ use anyhow::Context;
 use ash::vk;
 
 use crate::{
-    image::ImageManager,
+    image::{FrameIndex, ImageManager},
     render::framegraph::{alias::ResolvedRegistry, graph::ImageAlias},
 };
 
@@ -16,9 +16,9 @@ pub struct AttachmentResolver<'a> {
 impl<'a> AttachmentResolver<'a> {
     pub fn image_view(&self, alias: ImageAlias) -> anyhow::Result<vk::ImageView> {
         let index = if alias == ImageAlias::SwapchainImage {
-            self.swapchain_image_index
+            FrameIndex::Swapchain(self.swapchain_image_index)
         } else {
-            self.frame_index
+            FrameIndex::Frame(self.frame_index)
         };
         let image_view_key = self
             .registry
@@ -27,20 +27,12 @@ impl<'a> AttachmentResolver<'a> {
             .copied()
             .with_context(|| {
                 format!(
-                    "no image view registered for alias {:?} (index = {})",
+                    "no image view registered for alias {:?} (index = {:?})",
                     alias, index
                 )
             })?;
 
-        let image_view = self
-            .image_manager
-            .image_view(image_view_key, Some(index))
-            .with_context(|| {
-                format!(
-                    "failed to resolve vk::ImageView for alias {:?} (index = {})",
-                    alias, index
-                )
-            })?;
+        let image_view = self.image_manager.resolve_image_view(image_view_key, index);
 
         Ok(image_view.vk_image_view)
     }

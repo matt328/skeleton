@@ -1,7 +1,7 @@
 use ash::vk;
 use tracing_subscriber::field::debug;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ImageState {
     pub layout: vk::ImageLayout,
     pub stage: vk::PipelineStageFlags2,
@@ -102,8 +102,8 @@ impl ImageState {
 
     pub const PRESENT: ImageState = ImageState {
         layout: vk::ImageLayout::PRESENT_SRC_KHR,
-        stage: vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
-        access: vk::AccessFlags2::NONE,
+        stage: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+        access: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
     };
 }
 
@@ -132,7 +132,7 @@ pub fn transition_image(
     new: ImageState,
     debug_name: &str,
 ) {
-    log_image_transition(old, new, debug_name);
+    // log_image_transition(old, new, debug_name);
     let barrier = vk::ImageMemoryBarrier2::default()
         .image(image)
         .subresource_range(range)

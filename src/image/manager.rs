@@ -9,6 +9,8 @@ use crate::image::LogicalImageViewKey;
 use crate::image::resource::OwnedImageInfo;
 use crate::image::resource::OwnedImageViewInfo;
 use crate::image::spec::ImageLifetime;
+use crate::image::spec::ImageViewTarget;
+use crate::render::Frame;
 use crate::vulkan::DeviceContext;
 
 use super::{
@@ -16,13 +18,6 @@ use super::{
     resource::{Image, ImageView},
     spec::{ImageSpec, ImageViewSpec},
 };
-
-pub struct ImageManager {
-    images: SlotMap<ImageKey, Image>,
-    image_views: SlotMap<ImageViewKey, ImageView>,
-    logical_images: SlotMap<LogicalImageKey, Vec<ImageKey>>,
-    logical_image_views: SlotMap<LogicalImageViewKey, Vec<ImageViewKey>>,
-}
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CompositeImageKey {
@@ -36,7 +31,95 @@ pub enum CompositeImageViewKey {
     PerFrame(LogicalImageViewKey),
 }
 
+pub enum ImageIndex {
+    Global,
+    Frame(u32),
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum FrameIndex {
+    Frame(u32),
+    Swapchain(u32),
+}
+
+impl FrameIndex {
+    pub fn raw(self) -> usize {
+        match self {
+            FrameIndex::Frame(i) | FrameIndex::Swapchain(i) => i as usize,
+        }
+    }
+}
+
+pub struct ImageManager {
+    images: SlotMap<ImageKey, Image>,
+    image_views: SlotMap<ImageViewKey, ImageView>,
+
+    logical_images: SlotMap<LogicalImageKey, Vec<ImageKey>>,
+    logical_image_views: SlotMap<LogicalImageViewKey, Vec<ImageViewKey>>,
+}
+
+impl Default for ImageManager {
+    fn default() -> Self {
+        Self {
+            images: Default::default(),
+            image_views: Default::default(),
+            logical_images: Default::default(),
+            logical_image_views: Default::default(),
+        }
+    }
+}
+
 impl ImageManager {
+    #[inline]
+    pub fn image_global(&self, key: ImageKey) -> &Image {
+        self.images
+            .get(key)
+            .expect("image_global: invalid ImageKey")
+    }
+
+    #[inline]
+    pub fn image_view_global(&self, key: ImageViewKey) -> &ImageView {
+        self.image_views.get(key).expect("invalid ImageViewKey")
+    }
+
+    #[inline]
+    pub fn image_per_frame(&self, key: LogicalImageKey, frame: FrameIndex) -> &Image {
+        let index = frame.raw();
+        let image_key = self
+            .logical_images
+            .get(key)
+            .and_then(|v| v.get(index))
+            .expect("invalid per-frame ImageKey");
+        self.image_global(*image_key)
+    }
+
+    #[inline]
+    pub fn image_view_per_frame(&self, key: LogicalImageViewKey, frame: FrameIndex) -> &ImageView {
+        let index = frame.raw();
+        let view_key = self
+            .logical_image_views
+            .get(key)
+            .and_then(|v| v.get(index))
+            .expect("invalid per-frame ImageViewKey");
+        self.image_view_global(*view_key)
+    }
+
+    #[inline]
+    pub fn resolve_image(&self, key: CompositeImageKey, frame: FrameIndex) -> &Image {
+        match key {
+            CompositeImageKey::Global(k) => self.image_global(k),
+            CompositeImageKey::PerFrame(k) => self.image_per_frame(k, frame),
+        }
+    }
+
+    #[inline]
+    pub fn resolve_image_view(&self, key: CompositeImageViewKey, frame: FrameIndex) -> &ImageView {
+        match key {
+            CompositeImageViewKey::Global(k) => self.image_view_global(k),
+            CompositeImageViewKey::PerFrame(k) => self.image_view_per_frame(k, frame),
+        }
+    }
+
     pub fn create_image(
         &mut self,
         allocator: &vk_mem::Allocator,
@@ -44,78 +127,93 @@ impl ImageManager {
         spec: ImageSpec,
         frame_count: u32,
     ) -> anyhow::Result<CompositeImageKey> {
-        log::trace!("Creating Image with spec: {}", spec);
-        if spec.lifetime == ImageLifetime::Global {
-            let (vk_image, allocation) = with_image_create_info(&spec, |ici, aci| unsafe {
-                allocator.create_image(ici, aci)
-            })
-            .context("failed to create image")?;
+        match spec.lifetime {
+            ImageLifetime::Global => {
+                let (vk_image, allocation) = with_image_create_info(&spec, |ici, aci| unsafe {
+                    allocator.create_image(ici, aci)
+                })
+                .context("failed to create image")?;
 
-            if let Some(debug_name) = spec.debug_name.as_deref() {
-                device_context.name_object(vk_image, debug_name)?;
-            }
-
-            let key = self.images.insert(Image {
-                vk_image,
-                owned: Some(OwnedImageInfo { allocation, spec }),
-            });
-
-            Ok(CompositeImageKey::Global(key))
-        } else {
-            let mut image_keys: Vec<ImageKey> = Vec::with_capacity(frame_count as usize);
-
-            for i in 0..frame_count {
-                let spec_clone = spec.clone();
-
-                let (vk_image, allocation) =
-                    with_image_create_info(&spec_clone, |ici, aci| unsafe {
-                        allocator.create_image(ici, aci)
-                    })
-                    .context("failed to create image")?;
-
-                if let Some(debug_name) = spec_clone.debug_name.as_deref() {
-                    device_context
-                        .name_object(vk_image, format!("{}(Frame {:?}", debug_name, i))?;
+                if let Some(debug_name) = spec.debug_name.as_deref() {
+                    device_context.name_object(vk_image, debug_name)?;
                 }
 
-                image_keys.push(self.images.insert(Image {
+                let key = self.images.insert(Image {
                     vk_image,
-                    owned: Some(OwnedImageInfo {
-                        allocation,
-                        spec: spec_clone,
-                    }),
-                }));
+                    owned: Some(OwnedImageInfo { allocation, spec }),
+                });
+
+                Ok(CompositeImageKey::Global(key))
             }
-            let logical_key = self.logical_images.insert(image_keys);
-            Ok(CompositeImageKey::PerFrame(logical_key))
+
+            ImageLifetime::PerFrame => {
+                let mut image_keys: Vec<ImageKey> = Vec::with_capacity(frame_count as usize);
+
+                for i in 0..frame_count {
+                    let spec_clone = spec.clone();
+
+                    let (vk_image, allocation) =
+                        with_image_create_info(&spec_clone, |ici, aci| unsafe {
+                            allocator.create_image(ici, aci)
+                        })
+                        .context("failed to create image")?;
+
+                    if let Some(debug_name) = spec_clone.debug_name.as_deref() {
+                        device_context
+                            .name_object(vk_image, format!("{}(Frame {:?}", debug_name, i))?;
+                    }
+
+                    image_keys.push(self.images.insert(Image {
+                        vk_image,
+                        owned: Some(OwnedImageInfo {
+                            allocation,
+                            spec: spec_clone,
+                        }),
+                    }));
+                }
+                let logical_key = self.logical_images.insert(image_keys);
+                Ok(CompositeImageKey::PerFrame(logical_key))
+            }
+
+            ImageLifetime::External => {
+                anyhow::bail!("external images must be registered explicitly")
+            }
         }
     }
 
-    pub fn register_external_perframe_image(
+    pub fn register_external_per_frame(
         &mut self,
         images: &[vk::Image],
         views: &[vk::ImageView],
     ) -> (CompositeImageKey, CompositeImageViewKey) {
-        let mut image_keys: Vec<ImageKey> = Vec::with_capacity(images.len());
-        let mut image_view_keys: Vec<ImageViewKey> = Vec::with_capacity(views.len());
+        assert_eq!(images.len(), views.len());
 
-        for (img, view) in images.iter().zip(views.iter()) {
-            image_keys.push(self.images.insert(Image {
-                vk_image: *img,
-                owned: None,
-            }));
-            image_view_keys.push(self.image_views.insert(ImageView {
-                vk_image_view: *view,
-                owned: None,
-            }));
-        }
+        let image_keys = images
+            .iter()
+            .map(|&img| {
+                self.images.insert(Image {
+                    vk_image: img,
+                    owned: None,
+                })
+            })
+            .collect();
 
-        let logical_key = self.logical_images.insert(image_keys);
-        let logical_view_key = self.logical_image_views.insert(image_view_keys);
+        let view_keys = views
+            .iter()
+            .map(|&view| {
+                self.image_views.insert(ImageView {
+                    vk_image_view: view,
+                    owned: None,
+                })
+            })
+            .collect();
+
+        let image_logical = self.logical_images.insert(image_keys);
+        let view_logical = self.logical_image_views.insert(view_keys);
 
         (
-            CompositeImageKey::PerFrame(logical_key),
-            CompositeImageViewKey::PerFrame(logical_view_key),
+            CompositeImageKey::PerFrame(image_logical),
+            CompositeImageViewKey::PerFrame(view_logical),
         )
     }
 
@@ -125,29 +223,17 @@ impl ImageManager {
         spec: ImageViewSpec,
         frame_count: u32,
     ) -> anyhow::Result<CompositeImageViewKey> {
-        let image_key = spec.image_key;
+        match spec.target {
+            ImageViewTarget::Global(image_key) => {
+                let image = self.image_global(image_key);
 
-        let image = self
-            .image(image_key, Some(0))
-            .context("Failed to resolve image for image_key")?;
-
-        let lifetime = image
-            .owned
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("failed to create ImageView using non-owned image"))?
-            .spec
-            .lifetime;
-
-        match lifetime {
-            ImageLifetime::Global => {
-                let info = spec
-                    .to_vk(self, None)
-                    .context("create_image_view failed to create ImageViewCreateInfo")?;
+                let info = spec.to_vk(image.vk_image);
                 let vk_image_view = unsafe {
                     device
                         .create_image_view(&info, None)
                         .context("failed to create ImageView")?
                 };
+
                 let key = self.image_views.insert(ImageView {
                     vk_image_view,
                     owned: Some(OwnedImageViewInfo {
@@ -157,32 +243,33 @@ impl ImageManager {
                 });
                 Ok(CompositeImageViewKey::Global(key))
             }
-            ImageLifetime::PerFrame => {
-                let mut image_view_keys: Vec<ImageViewKey> =
-                    Vec::with_capacity(frame_count as usize);
-                for index in 0..frame_count {
-                    let info = spec
-                        .to_vk(self, Some(index))
-                        .context("create_image_view failed to create ImageViewCreateInfo")?;
+
+            ImageViewTarget::PerFrame(logical_key) => {
+                let mut keys = Vec::with_capacity(frame_count as usize);
+
+                for frame in 0..frame_count {
+                    let image = self.image_per_frame(logical_key, FrameIndex::Frame(frame));
+
+                    let info = spec.to_vk(image.vk_image);
                     let vk_image_view = unsafe {
                         device
                             .create_image_view(&info, None)
                             .context("failed to create ImageView")?
                     };
+
                     let key = self.image_views.insert(ImageView {
                         vk_image_view,
                         owned: Some(OwnedImageViewInfo {
-                            _spec: spec,
+                            _spec: spec.clone(),
                             _debug_name: None,
                         }),
                     });
-                    image_view_keys.push(key);
+
+                    keys.push(key);
                 }
-                let logical_view_key = self.logical_image_views.insert(image_view_keys);
-                Ok(CompositeImageViewKey::PerFrame(logical_view_key))
-            }
-            ImageLifetime::External => {
-                anyhow::bail!("Cannot create image view for external images")
+
+                let logical_view = self.logical_image_views.insert(keys);
+                Ok(CompositeImageViewKey::PerFrame(logical_view))
             }
         }
     }
@@ -212,55 +299,33 @@ impl ImageManager {
         }
     }
 
-    pub fn image(&self, key: CompositeImageKey, frame_index: Option<u32>) -> Option<&Image> {
-        match key {
-            CompositeImageKey::Global(image_key) => self.images.get(image_key),
-            CompositeImageKey::PerFrame(logical_image_key) => {
-                let index = frame_index?;
-                let image_key = self.logical_images.get(logical_image_key)?[index as usize];
-                self.images.get(image_key)
-            }
-        }
-    }
-
-    pub fn image_view(
-        &self,
-        key: CompositeImageViewKey,
-        frame_index: Option<u32>,
-    ) -> Option<&ImageView> {
-        match key {
-            CompositeImageViewKey::Global(image_key) => self.image_views.get(image_key),
-            CompositeImageViewKey::PerFrame(logical_image_key) => {
-                let index = frame_index?;
-                let image_key = self.logical_image_views.get(logical_image_key)?[index as usize];
-                self.image_views.get(image_key)
-            }
-        }
-    }
-
     pub fn cleanup_per_frames(
         &mut self,
         device: &ash::Device,
         allocator: &vk_mem::Allocator,
     ) -> anyhow::Result<()> {
-        let view_keys: Vec<ImageViewKey> = self
-            .logical_image_views
-            .drain()
-            .flat_map(|(_, keys)| keys)
-            .collect();
-
-        for view_key in view_keys {
-            self.destroy_image_view(device, view_key)?;
+        for (_, views) in self.logical_image_views.drain() {
+            for key in views {
+                if let Some(view) = self.image_views.remove(key) {
+                    if view.owned.is_some() {
+                        unsafe { device.destroy_image_view(view.vk_image_view, None) }
+                    }
+                }
+            }
         }
 
-        let keys: Vec<ImageKey> = self
-            .logical_images
-            .drain()
-            .flat_map(|(_, keys)| keys)
-            .collect();
-        for key in keys {
-            self.destroy_image(key, allocator);
+        for (_, images) in self.logical_images.drain() {
+            for key in images {
+                if let Some(image) = self.images.remove(key) {
+                    if let Some(mut owned) = image.owned {
+                        unsafe {
+                            allocator.destroy_image(image.vk_image, &mut owned.allocation);
+                        }
+                    }
+                }
+            }
         }
+
         Ok(())
     }
 }
@@ -284,15 +349,4 @@ fn with_image_create_info<R>(
     };
 
     f(&ici, &aci)
-}
-
-impl Default for ImageManager {
-    fn default() -> Self {
-        Self {
-            images: Default::default(),
-            image_views: Default::default(),
-            logical_images: Default::default(),
-            logical_image_views: Default::default(),
-        }
-    }
 }

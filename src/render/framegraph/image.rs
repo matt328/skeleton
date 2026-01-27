@@ -2,20 +2,46 @@ use std::fmt;
 
 use ash::vk;
 
-use crate::render::framegraph::{alias::ImageDesc, graph::ImageAlias};
+use crate::render::framegraph::{ImageState, alias::ImageDesc, graph::ImageAlias};
 
-#[derive(Clone, PartialEq)]
+#[derive(Copy, Clone, Debug)]
+pub enum ImageIndexing {
+    Global,
+    PerFrame(FrameIndexKind),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum FrameIndexKind {
+    Frame,
+    Swapchain,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum ImageCreation {
     Declare(ImageDesc),
     UseExisting,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ImageUsage {
-    pub access: vk::AccessFlags2,
-    pub stages: vk::PipelineStageFlags2,
-    pub layout: vk::ImageLayout,
+    pub state: ImageState,
     pub aspects: vk::ImageAspectFlags,
+}
+
+impl ImageUsage {
+    pub fn to_state(self) -> ImageState {
+        self.state
+    }
+
+    pub fn subresource_range(self) -> vk::ImageSubresourceRange {
+        vk::ImageSubresourceRange {
+            aspect_mask: self.aspects,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        }
+    }
 }
 
 impl fmt::Display for ImageUsage {
@@ -23,13 +49,20 @@ impl fmt::Display for ImageUsage {
         write!(
             f,
             "ImageUseDescription(accessFlags={:?}, stageFlags={:?}, imageLayout={:?}, aspectFlags={:?})",
-            self.access, self.stages, self.layout, self.aspects,
+            self.state.access, self.state.stage, self.state.layout, self.aspects,
         )
     }
 }
 
-pub struct ImageRequirement {
+#[derive(Clone, Copy, Debug)]
+pub struct ImageAccess {
     pub alias: ImageAlias,
-    pub creation: ImageCreation,
     pub usage: ImageUsage,
+    pub indexing: ImageIndexing,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ImageRequirement {
+    pub access: ImageAccess,
+    pub creation: ImageCreation,
 }

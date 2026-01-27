@@ -3,8 +3,6 @@ mod manager;
 mod resource;
 mod spec;
 
-pub use resource::Image;
-
 pub use keys::*;
-pub use manager::{CompositeImageKey, CompositeImageViewKey, ImageManager};
-pub use spec::{ImageLifetime, ImageSpec, ImageViewSpec, ResizePolicy};
+pub use manager::{CompositeImageKey, CompositeImageViewKey, FrameIndex, ImageIndex, ImageManager};
+pub use spec::{ImageLifetime, ImageSpec, ImageViewSpec, ImageViewTarget, ResizePolicy};

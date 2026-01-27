@@ -5,7 +5,7 @@ use ash::vk;
 use crate::{
     image::{
         CompositeImageKey, CompositeImageViewKey, ImageManager, ImageSpec, ImageViewSpec,
-        ResizePolicy,
+        ImageViewTarget, ResizePolicy,
     },
     render::framegraph::{
         alias::{
@@ -119,7 +119,13 @@ fn create_image_view_spec(
     image_key: CompositeImageKey,
     spec: &ImageSpec,
 ) -> anyhow::Result<ImageViewSpec> {
-    Ok(ImageViewSpec::new(image_key)
+    let target = match image_key {
+        CompositeImageKey::Global(image_key) => ImageViewTarget::Global(image_key),
+        CompositeImageKey::PerFrame(logical_image_key) => {
+            ImageViewTarget::PerFrame(logical_image_key)
+        }
+    };
+    Ok(ImageViewSpec::new(target)
         .view_type(derive_view_type(spec.layers))
         .aspect(derive_aspect_mask(spec.format))
         .mip_range(0, 1)
@@ -181,7 +187,7 @@ fn create_image_spec(desc: &ImageDesc, ctx: &ImageResolveContext) -> anyhow::Res
         _ => ctx.default_resize_policy,
     };
 
-    let mut spec = ImageSpec::default()
+    let spec = ImageSpec::default()
         .format(format)
         .extent(extent)
         .usage(desc.usage)
@@ -189,9 +195,6 @@ fn create_image_spec(desc: &ImageDesc, ctx: &ImageResolveContext) -> anyhow::Res
         .resize_policy(resize_policy)
         .lifetime(desc.lifetime)
         .initial_layout(ctx.default_initial_layout);
-    if let Some(debug_name) = &desc.debug_name {
-        spec = spec.debug_name(debug_name);
-    }
 
     Ok(spec)
 }

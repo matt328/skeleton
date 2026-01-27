@@ -74,7 +74,6 @@ pub fn render_thread(
     let frames: Vec<Frame> = vec![
         Frame::new(&caps.device_context, command_pool, 2, 0).context("failed to create frame")?,
         Frame::new(&caps.device_context, command_pool, 2, 1).context("failed to create frame")?,
-        Frame::new(&caps.device_context, command_pool, 2, 2).context("failed to create frame")?,
     ];
 
     let mut frame_ring = FrameRing::new(frames);
@@ -91,15 +90,13 @@ pub fn render_thread(
         resolve_alias: &resolve_alias,
         default_resize_policy: crate::image::ResizePolicy::Swapchain,
         default_initial_layout: vk::ImageLayout::UNDEFINED,
-        frame_count: 3,
+        frame_count: 2,
     };
 
     let _extent = swapchain_context.swapchain_extent;
 
-    let swapchain_keys = image_manager.register_external_perframe_image(
-        &swapchain_context.images,
-        &swapchain_context.image_views,
-    );
+    let swapchain_keys = image_manager
+        .register_external_per_frame(&swapchain_context.images, &swapchain_context.image_views);
 
     let aci = AllocatorCreateInfo::new(&caps.instance, &device, *caps.physical_device);
 
@@ -122,7 +119,8 @@ pub fn render_thread(
         swapchain_context: &mut swapchain_context,
     };
 
-    while control.phase() != ShutdownPhase::StopRender {
+    // while control.phase() != ShutdownPhase::StopRender {
+    for _ in 0..10 {
         let frame = exec_resources.frame_ring.acquire(&device)?;
 
         let (image_index, _) = exec_resources
@@ -130,7 +128,7 @@ pub fn render_thread(
             .acquire_next_image(frame.image_available)?;
 
         plot!("swapchain image index", image_index as f64);
-        plot!("frame index", frame.index() as f64);
+        plot!("frame index", frame.index as f64);
 
         Client::running().context("no client")?.message(
             format!("swapchain image index: {:?}", image_index).as_ref(),
@@ -139,7 +137,7 @@ pub fn render_thread(
 
         Client::running()
             .context("no client")?
-            .message(format!("frame index: {:?}", frame.index()).as_ref(), 0);
+            .message(format!("frame index: {:?}", frame.index).as_ref(), 0);
 
         frame.swapchain_image_index = image_index;
 

@@ -1,17 +1,14 @@
 use std::{collections::HashMap, fmt};
 
-use anyhow::Context;
 use ash::vk::{self};
 
 use crate::{
-    image::ImageManager,
-    render::{
-        Frame,
-        framegraph::{
-            alias::ResolvedRegistry,
-            graph::ImageAlias,
-            pass::{BufferBarrierPrecursor, ImageBarrierPrecursor, RenderPass},
-        },
+    image::{ImageKey, LogicalImageKey},
+    render::framegraph::{
+        ImageState,
+        graph::ImageAlias,
+        image::{FrameIndexKind, ImageIndexing},
+        pass::{BufferBarrierPrecursor, ImageBarrierPrecursor, RenderPass},
     },
 };
 
@@ -20,46 +17,46 @@ pub enum BufferAlias {
     _Placeholder,
 }
 
-struct TrackedImageState {
-    layout: vk::ImageLayout,
-    stage: vk::PipelineStageFlags2,
-    access: vk::AccessFlags2,
+#[derive(Copy, Clone, Debug)]
+pub enum ImageUse {
+    Global(ImageKey),
+    PerFrame {
+        key: LogicalImageKey,
+        index: FrameIndexKind,
+    },
 }
 
-struct ImageBarrierDesc {
+pub struct ImageBarrierDesc {
     pub alias: ImageAlias,
-    pub src_stage: vk::PipelineStageFlags2,
-    pub src_access: vk::AccessFlags2,
-    pub old_layout: vk::ImageLayout,
-    pub dst_stage: vk::PipelineStageFlags2,
-    pub dst_access: vk::AccessFlags2,
-    pub new_layout: vk::ImageLayout,
-    pub aspect_flags: vk::ImageAspectFlags,
+    pub indexing: ImageIndexing,
+    pub old_state: ImageState,
+    pub new_state: ImageState,
+    pub subresource_range: vk::ImageSubresourceRange,
 }
+
 impl fmt::Display for ImageBarrierDesc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.alias)?;
+        writeln!(
+            f,
+            "layout: {:?} -> {:?}",
+            self.old_state.layout, self.new_state.layout
+        )?;
+        writeln!(
+            f,
+            "stage:  {:?} -> {:?}",
+            self.old_state.stage, self.new_state.stage
+        )?;
         write!(
             f,
-            "ImageBarrier {{ \
-             image: {}, \
-             src: [stage: {:?}, access: {:?}, layout: {:?}], \
-             dst: [stage: {:?}, access: {:?}, layout: {:?}], \
-             aspects: {:?} \
-             }}",
-            self.alias,
-            self.src_stage,
-            self.src_access,
-            self.old_layout,
-            self.dst_stage,
-            self.dst_access,
-            self.new_layout,
-            self.aspect_flags,
+            "access: {:?} -> {:?}",
+            self.old_state.access, self.new_state.access
         )
     }
 }
 
 pub struct BarrierPlan {
-    image_barrier_descs: HashMap<u32, Vec<ImageBarrierDesc>>,
+    pub image_barrier_descs: HashMap<u32, Vec<ImageBarrierDesc>>,
     _buffer_precursors: HashMap<u32, Vec<BufferBarrierPrecursor>>,
 }
 
@@ -74,7 +71,7 @@ impl BarrierPlan {
 
         for pass in passes {
             for precursor in pass.image_precursors() {
-                let prev = image_states.get(&precursor.alias);
+                let prev = image_states.get(&precursor.access.alias);
 
                 let barrier_desc = build_barrier_desc(prev, &precursor);
 
@@ -83,14 +80,7 @@ impl BarrierPlan {
                     .or_insert_with(Vec::new)
                     .push(barrier_desc);
 
-                image_states.insert(
-                    precursor.alias,
-                    TrackedImageState {
-                        layout: precursor.image_layout,
-                        stage: precursor.pipeline_stage_flags,
-                        access: precursor.access_flags,
-                    },
-                );
+                image_states.insert(precursor.access.alias, precursor.access.usage.state);
             }
         }
 
@@ -104,103 +94,6 @@ impl BarrierPlan {
             image_barrier_descs,
             _buffer_precursors: buffer_precursors,
         }
-    }
-
-    pub fn emit_pre_pass_barriers(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        frame: &Frame,
-        image_manager: &ImageManager,
-        registry: &ResolvedRegistry,
-        pass_id: u32,
-    ) -> anyhow::Result<()> {
-        let mut image_barriers = Vec::new();
-
-        if let Some(descs) = self.image_barrier_descs.get(&pass_id) {
-            for desc in descs {
-                let key = registry.images.get(&desc.alias).context("")?;
-
-                let image_handle = image_manager
-                    .image(*key, Some(frame.index() as u32))
-                    .context("")?
-                    .vk_image;
-
-                let barrier = vk::ImageMemoryBarrier2::default()
-                    .src_stage_mask(desc.src_stage)
-                    .dst_stage_mask(desc.dst_stage)
-                    .src_access_mask(desc.src_access)
-                    .dst_access_mask(desc.dst_access)
-                    .old_layout(desc.old_layout)
-                    .new_layout(desc.new_layout)
-                    .image(image_handle)
-                    .subresource_range(
-                        vk::ImageSubresourceRange::default()
-                            .aspect_mask(desc.aspect_flags)
-                            .base_mip_level(0)
-                            .level_count(vk::REMAINING_MIP_LEVELS)
-                            .base_array_layer(0)
-                            .layer_count(vk::REMAINING_ARRAY_LAYERS),
-                    );
-                image_barriers.push(barrier);
-            }
-        }
-
-        if !image_barriers.is_empty() {
-            let dependency_info =
-                vk::DependencyInfo::default().image_memory_barriers(&image_barriers);
-            unsafe { device.cmd_pipeline_barrier2(cmd, &dependency_info) }
-        }
-
-        Ok(())
-    }
-
-    pub fn emit_post_pass_barriers(
-        &self,
-        device: &ash::Device,
-        cmd: vk::CommandBuffer,
-        frame: &Frame,
-        image_manager: &ImageManager,
-        registry: &ResolvedRegistry,
-        first_frame: bool,
-    ) -> anyhow::Result<()> {
-        let mut image_barriers = Vec::new();
-
-        let key = registry
-            .images
-            .get(&super::graph::ImageAlias::SwapchainImage)
-            .context("")?;
-
-        let image_handle = image_manager
-            .image(*key, Some(frame.swapchain_image_index))
-            .context("")?
-            .vk_image;
-
-        let barrier = vk::ImageMemoryBarrier2::default()
-            .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-            .dst_stage_mask(vk::PipelineStageFlags2::BOTTOM_OF_PIPE)
-            .src_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
-            .old_layout(if first_frame {
-                vk::ImageLayout::UNDEFINED
-            } else {
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
-            })
-            .new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-            .image(image_handle)
-            .subresource_range(
-                vk::ImageSubresourceRange::default()
-                    .aspect_mask(vk::ImageAspectFlags::COLOR)
-                    .base_mip_level(0)
-                    .level_count(vk::REMAINING_MIP_LEVELS)
-                    .base_array_layer(0)
-                    .layer_count(vk::REMAINING_ARRAY_LAYERS),
-            );
-
-        image_barriers.push(barrier);
-
-        let dependency_info = vk::DependencyInfo::default().image_memory_barriers(&image_barriers);
-        unsafe { device.cmd_pipeline_barrier2(cmd, &dependency_info) }
-        Ok(())
     }
 }
 
@@ -241,17 +134,17 @@ impl fmt::Display for BarrierPlan {
 
 fn initial_states<'a>(
     aliases: impl IntoIterator<Item = &'a ImageAlias>,
-) -> HashMap<ImageAlias, TrackedImageState> {
+) -> HashMap<ImageAlias, ImageState> {
     let mut states = HashMap::new();
     for alias in aliases {
         let state = match alias {
-            ImageAlias::SwapchainImage => TrackedImageState {
+            ImageAlias::SwapchainImage => ImageState {
                 layout: vk::ImageLayout::PRESENT_SRC_KHR,
                 stage: vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
                 access: vk::AccessFlags2::NONE,
             },
 
-            _ => TrackedImageState {
+            _ => ImageState {
                 layout: vk::ImageLayout::UNDEFINED,
                 stage: vk::PipelineStageFlags2::NONE,
                 access: vk::AccessFlags2::NONE,
@@ -265,29 +158,19 @@ fn initial_states<'a>(
 }
 
 fn build_barrier_desc(
-    prev: Option<&TrackedImageState>,
+    prev: Option<&ImageState>,
     precursor: &ImageBarrierPrecursor,
 ) -> ImageBarrierDesc {
-    let (src_stage, src_access, old_layout) = match prev {
-        Some(p) => (p.stage, p.access, p.layout),
-        None => (
-            vk::PipelineStageFlags2::NONE,
-            vk::AccessFlags2::NONE,
-            vk::ImageLayout::UNDEFINED,
-        ),
+    let old_state = match prev {
+        Some(p) => p,
+        None => &ImageState::UNDEFINED,
     };
 
     ImageBarrierDesc {
-        alias: precursor.alias,
-
-        src_stage,
-        src_access,
-        old_layout,
-
-        dst_stage: precursor.pipeline_stage_flags,
-        dst_access: precursor.access_flags,
-        new_layout: precursor.image_layout,
-
-        aspect_flags: precursor.aspect_flags,
+        alias: precursor.access.alias,
+        old_state: *old_state,
+        new_state: precursor.access.usage.state,
+        subresource_range: precursor.access.usage.subresource_range(),
+        indexing: precursor.access.indexing,
     }
 }

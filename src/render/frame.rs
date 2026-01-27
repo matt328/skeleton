@@ -10,6 +10,7 @@ pub struct Frame {
     pub primary_cmd: vk::CommandBuffer,
     pub secondary_cmds: Vec<vk::CommandBuffer>,
     pub swapchain_image_index: u32,
+    pub number: u64,
 }
 
 impl Frame {
@@ -34,6 +35,7 @@ impl Frame {
             primary_cmd,
             secondary_cmds,
             swapchain_image_index: 0,
+            number: 0,
         })
     }
 
@@ -52,10 +54,6 @@ impl Frame {
                 .context("failed waiting for fences")?;
         }
         Ok(())
-    }
-
-    pub fn index(&self) -> usize {
-        self.index
     }
 }
 

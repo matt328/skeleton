@@ -2,7 +2,10 @@ use std::fmt;
 
 use ash::vk::{self, ImageUsageFlags};
 
-use crate::image::manager::CompositeImageKey;
+use crate::image::{
+    ImageKey, LogicalImageKey,
+    manager::{CompositeImageKey, FrameIndex},
+};
 
 use super::ImageManager;
 
@@ -126,9 +129,15 @@ impl fmt::Display for ImageSpec {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum ImageViewTarget {
+    Global(ImageKey),
+    PerFrame(LogicalImageKey),
+}
+
 #[derive(Clone, Copy)]
 pub struct ImageViewSpec {
-    pub image_key: CompositeImageKey,
+    pub target: ImageViewTarget,
     pub view_type: vk::ImageViewType,
     pub format: vk::Format,
     pub aspect_mask: vk::ImageAspectFlags,
@@ -139,9 +148,9 @@ pub struct ImageViewSpec {
     pub debug_name: Option<&'static str>,
 }
 impl ImageViewSpec {
-    pub fn new(image_key: CompositeImageKey) -> Self {
+    pub fn new(target: ImageViewTarget) -> Self {
         Self {
-            image_key,
+            target,
             view_type: vk::ImageViewType::TYPE_2D,
             format: vk::Format::UNDEFINED,
             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -181,25 +190,16 @@ impl ImageViewSpec {
 }
 
 impl ImageViewSpec {
-    pub fn to_vk(
-        &self,
-        image_manager: &ImageManager,
-        frame_index: Option<u32>,
-    ) -> anyhow::Result<vk::ImageViewCreateInfo<'_>> {
-        if let Some(image) = image_manager.image(self.image_key, frame_index) {
-            Ok(vk::ImageViewCreateInfo::default()
-                .image(image.vk_image())
-                .view_type(self.view_type)
-                .format(self.format)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: self.aspect_mask,
-                    base_mip_level: self.base_mip_level,
-                    level_count: self.level_count,
-                    base_array_layer: self.base_array_layer,
-                    layer_count: self.layer_count,
-                }))
-        } else {
-            Err(anyhow::anyhow!("Failed to create ImageViewCreateInfo"))
-        }
+    pub fn to_vk(&self, image: vk::Image) -> vk::ImageViewCreateInfo<'_> {
+        vk::ImageViewCreateInfo::default()
+            .image(image)
+            .view_type(self.view_type)
+            .format(self.format)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(self.aspect_mask)
+                    .level_count(1)
+                    .layer_count(1),
+            )
     }
 }

@@ -8,8 +8,9 @@ use crate::{
     image::ImageManager,
     render::{
         framegraph::{
-            alias::ResolvedRegistry, barrier::BufferAlias, graph::ImageAlias,
-            image::ImageRequirement,
+            alias::ResolvedRegistry,
+            barrier::BufferAlias,
+            image::{ImageAccess, ImageRequirement},
         },
         pipeline::GraphicsPipelineDesc,
         render_packet::RenderData,
@@ -23,12 +24,8 @@ pub struct BufferBarrierPrecursor {
 }
 
 pub struct ImageBarrierPrecursor {
-    pub alias: ImageAlias,
-    pub write_access: bool,
-    pub access_flags: vk::AccessFlags2,
-    pub pipeline_stage_flags: vk::PipelineStageFlags2,
-    pub image_layout: vk::ImageLayout,
-    pub aspect_flags: vk::ImageAspectFlags,
+    pub access: ImageAccess,
+    pub is_write: bool,
 }
 
 #[inline]
