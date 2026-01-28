@@ -146,15 +146,15 @@ impl FrameGraph {
                         desc.old_state
                     };
 
-                    log::trace!(
-                        "[Frame {:?} index: {:?}] Image={:?}[{:?}] old={:?} new={:?}",
-                        frame.number,
-                        frame.index,
-                        desc.alias,
-                        debug_frame_index,
-                        old_state,
-                        desc.new_state
-                    );
+                    // log::trace!(
+                    //     "[Frame {:?} index: {:?}] Image={:?}[{:?}] old={:?} new={:?}",
+                    //     frame.number,
+                    //     frame.index,
+                    //     desc.alias,
+                    //     debug_frame_index,
+                    //     old_state,
+                    //     desc.new_state
+                    // );
                     transition_image(
                         device,
                         frame.primary_cmd,

@@ -1,3 +1,4 @@
+use core::alloc;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -5,12 +6,13 @@ use ash::vk;
 #[cfg(feature = "tracing")]
 use tracy_client::frame_mark;
 use tracy_client::{Client, plot};
-use vk_mem::AllocatorCreateInfo;
+use vk_mem::{Alloc, AllocatorCreateInfo};
 
 use crate::{
+    buffer::BufferManager,
     caps::RenderCaps,
     image::ImageManager,
-    messages::EngineControl,
+    messages::{EngineControl, ShutdownPhase},
     render::{
         Frame, FrameRing,
         framegraph::{CompositionPass, ForwardPass, FramegraphBuilder, ImageResolveContext},
@@ -43,7 +45,7 @@ struct FrameExecutionResources<'a> {
 
 pub fn render_thread(
     caps: RenderCaps,
-    _control: Arc<EngineControl>,
+    control: Arc<EngineControl>,
     swapchain_create_caps: SwapchainCreateCaps,
 ) -> anyhow::Result<()> {
     let queue_index = swapchain_create_caps.queue_families.graphics_index;
@@ -51,6 +53,8 @@ pub fn render_thread(
         .context("failed to create Swapchain Context")?;
 
     let mut image_manager = ImageManager::default();
+
+    let mut buffer_manager = BufferManager::default();
 
     let device = &caps.device_context.device;
 
@@ -68,7 +72,10 @@ pub fn render_thread(
     let frames: Vec<Frame> = vec![
         Frame::new(&caps.device_context, command_pool, 2, 0).context("failed to create frame")?,
         Frame::new(&caps.device_context, command_pool, 2, 1).context("failed to create frame")?,
+        Frame::new(&caps.device_context, command_pool, 2, 2).context("failed to create frame")?,
     ];
+
+    let frame_count = frames.len() as u32;
 
     let mut frame_ring = FrameRing::new(frames);
 
@@ -84,7 +91,7 @@ pub fn render_thread(
         resolve_alias: &resolve_alias,
         default_resize_policy: crate::image::ResizePolicy::Swapchain,
         default_initial_layout: vk::ImageLayout::UNDEFINED,
-        frame_count: 2,
+        frame_count,
     };
 
     let _extent = swapchain_context.swapchain_extent;
@@ -92,9 +99,32 @@ pub fn render_thread(
     let swapchain_keys = image_manager
         .register_external_per_frame(&swapchain_context.images, &swapchain_context.image_views);
 
-    let aci = AllocatorCreateInfo::new(&caps.instance, device, *caps.physical_device);
+    let mut aci = AllocatorCreateInfo::new(&caps.instance, device, *caps.physical_device);
+    aci.flags = vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS;
 
     let allocator = unsafe { vk_mem::Allocator::new(aci).context("failed to create allocator")? };
+
+    let buffer_info = vk::BufferCreateInfo::default()
+        .size(1024)
+        .usage(
+            vk::BufferUsageFlags::RESOURCE_DESCRIPTOR_BUFFER_EXT
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        )
+        .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+    let alloc_info = vk_mem::AllocationCreateInfo {
+        usage: vk_mem::MemoryUsage::Auto,
+        flags: vk_mem::AllocationCreateFlags::MAPPED
+            | vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE,
+
+        ..Default::default()
+    };
+
+    let (buffer, mut allocation) = unsafe { allocator.create_buffer(&buffer_info, &alloc_info)? };
+
+    unsafe {
+        allocator.destroy_buffer(buffer, &mut allocation);
+    }
 
     let mut framegraph = FramegraphBuilder::new(
         &mut image_manager,
@@ -113,8 +143,7 @@ pub fn render_thread(
         swapchain_context: &mut swapchain_context,
     };
 
-    // while control.phase() != ShutdownPhase::StopRender {
-    for _ in 0..10 {
+    while control.phase() != ShutdownPhase::StopRender {
         let frame = exec_resources.frame_ring.acquire(device)?;
 
         let (image_index, _) = exec_resources
@@ -196,7 +225,7 @@ pub fn render_thread(
     swapchain_context.destroy();
 
     log::debug!("Render thread shutting down");
-    anyhow::bail!("forced render-thread failure (ARBOR_FAIL_RENDER)");
+    Ok(())
 }
 
 fn gather_mock_render_data() -> RenderData {

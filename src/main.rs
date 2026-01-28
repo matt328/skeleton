@@ -7,6 +7,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use crate::app::{App, AppState};
 
 mod app;
+mod buffer;
 mod caps;
 mod engine;
 mod gameplay;

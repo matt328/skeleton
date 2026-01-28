@@ -4,7 +4,7 @@ appenders:
   stdout:
     kind: console
     encoder:
-      pattern: "{d(%l:%M:%S)} | {h({l:<5})} | {({f}:{L}):64.64}{n}     {h({m})}{n}{n}"
+      pattern: "{d(%l:%M:%S)} | {h({l:<5})} | {({f}:{L}):64.64}{n}{h({m})}{n}{n}"
 
 root:
   level: warn
